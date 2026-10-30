@@ -14,7 +14,11 @@ import cv2
 import numpy as np
 import tritonclient.grpc as grpcclient
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))      # the repo: inference/postprocess.py needs only numpy + opencv
+HERE = os.path.dirname(os.path.abspath(__file__))
+for _p in ("/jidoka_training/code/jt.train.jade", "/jidoka_training/code/jt.train.jade"):      # the JADE code: inference/postprocess.py (numpy + opencv only)
+    if os.path.isdir(_p):
+        sys.path.append(_p)
+        break
 from inference.postprocess import prepare_picture, apply_thresholds, scores
 
 # ── Settings: change them here ────────────────────────────────────────────────────────────────────────────────────────
