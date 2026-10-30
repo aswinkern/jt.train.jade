@@ -7,6 +7,7 @@ Output: for every picture <name>.png = [original | heat map] and one line with p
 """
 import os
 import sys
+import time
 import argparse
 
 import cv2
@@ -59,6 +60,7 @@ def main():
     if not pics:
         raise SystemExit("[Client] no pictures in %s" % a.image)
     os.makedirs(a.output, exist_ok=True)
+    times = []                                                       # (seconds, pictures) of every Triton request
 
     for k in range(0, len(pics), a.batch):
         chunk = pics[k:k + a.batch]
@@ -72,7 +74,10 @@ def main():
         x = np.stack([prepare_picture(r, (H, W)) for _, r in good])                  # (B, 3, H, W)
         inp = grpcclient.InferInput(INPUT_NAME, list(x.shape), "FP32")
         inp.set_data_from_numpy(x)
+        t0 = time.perf_counter()
         maps = client.infer(MODEL_NAME, inputs=[inp], outputs=[grpcclient.InferRequestedOutput(OUTPUT_NAME)]).as_numpy(OUTPUT_NAME)   # (B, H, W)
+        dt = time.perf_counter() - t0                                # send + model + receive; per picture = dt / pictures in the request
+        times.append((dt, len(good)))
         for (p, raw), err in zip(good, maps):
             p99, mx = scores(err)
             value, areas = apply_thresholds(err, HEATMAP_SCALING_FACTOR, PIXELWISE_THRESHOLD, AREA_THRESHOLD)
@@ -82,7 +87,14 @@ def main():
                                   label(cv2.addWeighted(base, 0.5, heat, 0.5, 0), "p99 %.3f  max %.3f  (dark red = %.3f)" % (p99, mx, HEATMAP_SCALING_FACTOR))], axis=1)
             cv2.imwrite(os.path.join(a.output, os.path.splitext(os.path.basename(p))[0] + ".png"), img)
             n_reg = int((areas >= AREA_THRESHOLD).sum()) if AREA_THRESHOLD > 0 else len(areas)
-            print("[Client] %s  p99 %.3f  max %.3f  regions %d" % (os.path.basename(p), p99, mx, n_reg))
+            print("[Client] %s  p99 %.3f  max %.3f  regions %d  inference %.1f ms" % (os.path.basename(p), p99, mx, n_reg, 1000 * dt / len(good)))
+    if times:                                                        # the first request is left out of the average (warm-up) when there are more
+        rest = times[1:] if len(times) > 1 else times
+        per = [t / n for t, n in rest]
+        print("[Time] inference per picture (Triton request): mean %.1f ms | min %.1f ms | max %.1f ms  ->  %.0f pictures per minute  (%d pictures%s)" % (
+            1000 * sum(t for t, _ in rest) / sum(n for _, n in rest), 1000 * min(per), 1000 * max(per),
+            60 * sum(n for _, n in rest) / sum(t for t, _ in rest), sum(n for _, n in times),
+            ", first request %.1f ms per picture left out as warm-up" % (1000 * times[0][0] / times[0][1]) if len(times) > 1 else ""))
     print("[Client] Done. Pictures in %s" % a.output)
 
 
