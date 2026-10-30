@@ -1,0 +1,4 @@
+# the DINOv2 weights are not in this repo (models/jade/ on the server); never commit weights
+*.pth
+__pycache__/
+*.pyc
