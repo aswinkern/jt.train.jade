@@ -122,26 +122,25 @@ class JADE_v3(nn.Module):
 
     def forward_export(self, x):
         """
-        Pure PyTorch forward pass for ONNX export.
+        Pure PyTorch forward pass for ONNX export. Any batch size B (nothing about B is fixed inside).
         Input:  (B, 3, H, W)
         Output: (B, H, W) float32 raw error map
         """
-        B = x.shape[0]
         H_img, W_img = self.image_size
         patch_h = H_img // self.patch_size
         patch_w = W_img // self.patch_size
         N = patch_h * patch_w
 
-        features       = self.extract_features(x)
-        combined_error = torch.zeros(B, N, device=x.device, dtype=x.dtype)
-
+        features = self.extract_features(x)
+        combined_error = None
         for i, feat in enumerate(features):
-            feat_flat     = feat.reshape(B * N, self.feature_dim)
+            feat_flat     = feat.reshape(-1, self.feature_dim)                 # (B*N, C)
             reconstructed = self.memories[i](feat_flat)
-            error         = self.patch_error(feat_flat, reconstructed)  # (B*N,)
-            combined_error = combined_error + self.layer_weights[i] * error.reshape(B, N)
+            error         = self.patch_error(feat_flat, reconstructed)         # (B*N,)
+            weighted      = self.layer_weights[i] * error.reshape(-1, N)       # (B, N)
+            combined_error = weighted if combined_error is None else combined_error + weighted
 
-        heatmap = combined_error.reshape(B, 1, patch_h, patch_w)
+        heatmap = combined_error.reshape(-1, 1, patch_h, patch_w)
         heatmap = F.interpolate(heatmap, size=(H_img, W_img),
                                 mode="bilinear", align_corners=False)
         return heatmap.squeeze(1)   # (B, H, W)

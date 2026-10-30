@@ -39,6 +39,7 @@ import torch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))        # JADE_v3, so that model/, data/ ... can be imported
 from model import model as md                      # noqa: E402
 from inference.evaluate import error_maps_batch, label, spread   # noqa: E402
+from inference.postprocess import apply_thresholds   # noqa: E402  (shared with the Triton client)
 
 
 def find_images(root, exts):
@@ -107,20 +108,6 @@ def timing(name, times):
         name, 1000 * min(per), 1000 * sum(t for t, _ in rest) / sum(n for _, n in rest), 1000 * max(per),
         60 * sum(n for _, n in rest) / sum(t for t, _ in rest), sum(n for _, n in times),
         ", first step %.1f s left out as warm-up" % first[0] if len(times) > 1 else ""), flush=True)
-
-
-def apply_thresholds(d_px, colour_max, thr, min_area):
-    """Colour value 0..1 of every pixel after pixelwise_threshold and area_threshold, and the areas (pixels) of the regions
-    pixelwise_threshold left, before the area filter. A region = pixels above pixelwise_threshold that touch each other; a
-    region with fewer than min_area pixels is removed (drawn dark blue)."""
-    value = np.clip(d_px / colour_max, 0, 1)
-    if thr is not None:
-        value = np.where(value * 100.0 > thr, value, 0.0)
-    n, lab, stats, _ = cv2.connectedComponentsWithStats((value > 0).astype(np.uint8), connectivity=8)
-    areas = stats[1:, cv2.CC_STAT_AREA]
-    if min_area > 0 and len(areas):
-        value = np.where(np.concatenate([[False], areas >= min_area])[lab], value, 0.0)
-    return value, areas
 
 
 def main():
