@@ -1,4 +1,6 @@
 # JADE config: the one you edit. run.sh train copies this file into <out>/exp_N/config.yaml and replaces @EXP@ with that folder.
+gpu_id: 0        # which GPU run.sh uses: 0 or 1 (two GPUs in this server). run.sh --gpu N overrides it.
+
 customer:
     customer_name: "BorgWarner_138P"
     workspace_path: "/jidoka_training/simulations/jdisk3/jt.cust.anomaly_jade_v3"
@@ -32,7 +34,7 @@ model:
         learning_rate: 0.0001
 
     # How much each layer counts in the final heat map, in the order of 'layers' (L5, L11, L17, L23).
-    # Inference only, no retraining: edit it and run infer.sh again. Leave the line out = equal weights.
+    # Inference only, no retraining: edit it and run ./run.sh infer again. Leave the line out = equal weights.
     layer_weights: [1.0, 1.0, 1.0, 1.0]
 
     # Noise filter, inference only. Each patch is compared on 1024 small measurements; a measurement whose
@@ -40,37 +42,20 @@ model:
     # numbers, so re-tune heatmap_scaling_factor / pixelwise_threshold after changing it. 0 = off.
     featurewise_threshold: 0.6
 
-    # Colours of the heat map in infer.sh: error / heatmap_scaling_factor, clipped to 0..1.
+    # Colours of the heat map in run.sh infer: error / heatmap_scaling_factor, clipped to 0..1.
     # 0 = dark blue, a raw error equal to this number (or more) = dark red. Inference only, no retraining.
     # Leave the line out = colours relative to the pictures being scored.
     heatmap_scaling_factor: 0.3
 
-    # Hides the weak glow in the infer.sh pictures: a pixel whose colour value is at or below this (0-100, where
+    # Hides the weak glow in the run.sh infer pictures: a pixel whose colour value is at or below this (0-100, where
     # 100 = dark red = heatmap_scaling_factor) is drawn dark blue. Inference only, no retraining.
     # Leave the line out = nothing is hidden.
     pixelwise_threshold: 70
 
     # Removes small coloured regions, inference only. After pixelwise_threshold, pixels that touch each other form a
     # region; a region with fewer pixels than this (pixels of the 518 x 518 picture) is drawn dark blue, left out of
-    # post/ and regions/. 0 = off. Try a few values: 784 is about 28 x 28 px.
+    # post/. 0 = off. Try a few values: 784 is about 28 x 28 px.
     area_threshold: 35
-
-# UMAP picture (cluster.sh). Fitted on the training pictures, the others are placed into it. Changing these only
-# redoes the UMAP, the saved model output (maps.json, embeddings.json) is reused: no GPU needed.
-umap:
-    n_neighbors: 15      # how many neighbours each point looks at. Small (5-10) = many small tight groups,
-                         # large (30-100) = a smoother picture where the big shape counts more
-    min_dist: 0.2        # how tightly points may be packed. 0.0 = very tight clumps, 0.5 = spread out
-    spread: 1.0          # overall size of the map; keep min_dist at or below it
-    metric: cosine       # distance between pictures: cosine | euclidean | correlation | manhattan
-    random_state: 0      # fixed number = same picture every run (slower, one CPU core). null = random, faster
-
-# Clusters in the UMAP page (cluster.sh). Found on the dots of each map; every cluster gets an id and a colour, id 0 = outlier.
-cluster:
-    min_cluster_size: 20   # fewest regions that make a cluster. Smaller = more small clusters, bigger = fewer big clusters and more outliers
-    # ignore.sh: regions in these clusters are not counted as predictions. Ids are per map, so say which map they belong to.
-    ignore_layer: code L23   # the Layer drop-down name in umap.html: residual L5 ... residual L23, code L5 ... code L23
-    ignore_ids: [3, 4, 5, 6]
 
 training:
     num_epochs: 50

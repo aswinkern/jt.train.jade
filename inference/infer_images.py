@@ -12,21 +12,14 @@ pictures scored in this run (the value is printed).
 Two JSON files are saved per picture, in two folders of --out (same sub-folders as the input, file name + .json):
   raw/   the model's error map of every layer, before any post-processing (no layer_weights, factor or pixelwise_threshold;
          layer_maps_featurewise is added when featurewise_threshold is on). Made once by the GPU.
-  regions/ (third folder, see below)
   post/  the result with the current settings: the settings used, scores, the combined error map and the 0-100 colour
-         values. This is what the picture is drawn from, and what clustering can use.
-regions/ one file per picture, any number of predicted regions in it: a region is a coloured area of the heat map (pixels above
-         pixelwise_threshold that touch each other), as drawn on the picture. For each region: its box, error numbers and the
-         checkpoint's own features averaged over the region (the patches it covers): `residual` = features minus what the
-         autoencoder rebuilt (signed: says how the region is off) and `code` = the autoencoder bottleneck, for every tapped
-         layer. All from this checkpoint, no other model. Every region has its area (area_px in the 518 picture, area_original_px
-         in the camera picture). Regions smaller than model.area_threshold (pixels) are removed before this, like on the picture.
+         values. This is what the picture is drawn from.
 The next run with the same --out, --data, checkpoint, image size and featurewise_threshold does not run the model:
 layer_weights, heatmap_scaling_factor and pixelwise_threshold only redo post/, scores.csv and pictures/.
 --redo runs the model again.
 model.featurewise_threshold (optional, 0 = off): squared feature differences at or below it count as 0 before averaging.
 model.area_threshold (pixels of the 518 x 518 picture, optional, 0 = off): after pixelwise_threshold, a coloured region (pixels that
-touch each other) with fewer pixels than this is removed: drawn dark blue, not in post/ colour values, not in regions/.
+touch each other) with fewer pixels than this is removed: drawn dark blue, not in post/ colour values.
 model.pixelwise_threshold (0-100, optional): a pixel whose colour value, 100 x error / factor, is at or below it is
 drawn dark blue (as if nothing was found); the others keep their colour. Picture only: no OK/NG verdict.
 """
@@ -46,7 +39,6 @@ import torch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))        # JADE_v3, so that model/, data/ ... can be imported
 from model import model as md                      # noqa: E402
 from inference.evaluate import error_maps_batch, label, spread   # noqa: E402
-from data.data_handler import DataHandler   # noqa: E402
 
 
 def find_images(root, exts):
@@ -117,27 +109,6 @@ def timing(name, times):
         ", first step %.1f s left out as warm-up" % first[0] if len(times) > 1 else ""), flush=True)
 
 
-def find_regions(value_px, err_px, thr, grid):
-    """Predicted regions as drawn on the picture: connected groups of pixels (in the H x W picture) whose colour value is
-    above pixelwise_threshold. Each region has the exact box around it and "_w": how much of each grid patch it covers
-    (used to average the model's per-patch features over the region)."""
-    H, W = value_px.shape
-    ph, pw = H // grid[0], W // grid[1]
-    mask = (value_px > (0 if thr is None else thr)).astype(np.uint8)
-    n, lab, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
-    regs = []
-    for k in range(1, n):
-        x, y, w, h, area = [int(v) for v in stats[k]]
-        sel = lab == k
-        regs.append({"area_px": area, "box": [x, y, x + w, y + h], "max_error": round(float(err_px[sel].max()), 4),
-                     "mean_error": round(float(err_px[sel].mean()), 4), "max_colour": round(float(value_px[sel].max()), 1),
-                     "_w": sel[:grid[0] * ph, :grid[1] * pw].reshape(grid[0], ph, grid[1], pw).mean(axis=(1, 3)).ravel()})
-    regs.sort(key=lambda r: -r["max_error"])
-    for i, r in enumerate(regs):
-        r["id"] = i
-    return regs
-
-
 def apply_thresholds(d_px, colour_max, thr, min_area):
     """Colour value 0..1 of every pixel after pixelwise_threshold and area_threshold, and the areas (pixels) of the regions
     pixelwise_threshold left, before the area filter. A region = pixels above pixelwise_threshold that touch each other; a
@@ -150,115 +121,6 @@ def apply_thresholds(d_px, colour_max, thr, min_area):
     if min_area > 0 and len(areas):
         value = np.where(np.concatenate([[False], areas >= min_area])[lab], value, 0.0)
     return value, areas
-
-
-@torch.no_grad()
-def residual_code_batch(jade, raws, size):
-    """The checkpoint's own per-patch outputs for several pictures: for every layer the residual (features - what the autoencoder
-    rebuilt, signed, so it says HOW the patch is off) and the autoencoder code (what it understood of the patch).
-    Returns [(residual (B, N, C), code (B, N, bottleneck)) per layer]."""
-    H, W = size
-    dev = next(jade.parameters()).device
-    t = torch.cat([DataHandler.preprocess_image(r, (W, H)) for r in raws]).to(dev)
-    out = []
-    for i, f in enumerate(jade.extract_features(t)):
-        B, N, C = f.shape
-        flat = f.reshape(-1, C)
-        code = jade.memories[i].encoder(flat)
-        res = flat - jade.memories[i].decoder(code)
-        out.append((res.reshape(B, N, C).float().cpu().numpy(), code.reshape(B, N, -1).float().cpu().numpy()))
-    return out
-
-
-def load_results(path, meta, grid):
-    """{relative picture path: [one (gh, gw) error map per layer]} from maps.json, {} if missing or not matching."""
-    if not os.path.isfile(path):
-        return {}
-    d = json.load(open(path))
-    bad = [k for k in meta if d.get("meta", {}).get(k) != meta[k]]
-    if bad:
-        print("[Infer] %s was made with other %s: not reused, everything is computed again" % (path, ", ".join(bad)))
-        return {}
-    return {rel: [np.array(m, dtype=np.float32).reshape(grid) for m in maps] for rel, maps in d["images"].items()}
-
-
-def save_results(path, meta, grid, results):
-    d = {"meta": meta, "grid": list(grid), "images": {rel: [np.round(m, 4).ravel().tolist() for m in maps] for rel, maps in results.items()}}
-    with open(path + ".tmp", "w") as f:
-        json.dump(d, f, separators=(",", ":"))
-    os.replace(path + ".tmp", path)
-
-
-def region_stage(a, jade, layers, grid, size, device, meta, paths, maps, thr, area_thr, colour_max):
-    """regions/<picture>.json: one file per picture with every predicted region of it (a coloured area of the heat map) and,
-    for each, the checkpoint's own features averaged over the region: the residual and the autoencoder code of every tapped
-    layer (one pass of the model over the whole picture). Redone only when the checkpoint or the post-processing settings changed."""
-    H, W = size
-    sig = json.loads(json.dumps({"meta": meta, "layer_weights": [round(w, 6) for w in jade.layer_weights],
-                                 "heatmap_scaling_factor": colour_max, "pixelwise_threshold": thr, "area_threshold": area_thr, "features": "residual+code v1"}))
-
-    def rfile(rel):
-        return os.path.join(a.out, "regions", rel + ".json")
-
-    todo = []
-    for p in paths:
-        rel = os.path.relpath(p, a.data)
-        if p not in maps:
-            continue
-        f = rfile(rel)
-        ok = False
-        if not a.redo and os.path.isfile(f):
-            try:
-                ok = json.load(open(f)).get("sig") == sig
-            except ValueError:
-                ok = False
-        if not ok:
-            todo.append(p)
-    print("[Infer] regions: features for %d pictures, %d already saved" % (len(todo), len(maps) - len(todo)), flush=True)
-    n_regions = 0
-    region_times = []
-    with ThreadPoolExecutor(max_workers=4) as pool, torch.no_grad():
-        chunks = [todo[k:k + a.batch] for k in range(0, len(todo), a.batch)]
-        loading = pool.submit(lambda c: [cv2.imread(p) for p in c], chunks[0]) if chunks else None
-        for ci, chunk in enumerate(chunks):
-            raws = loading.result()
-            loading = pool.submit(lambda c: [cv2.imread(p) for p in c], chunks[ci + 1]) if ci + 1 < len(chunks) else None
-            good = [r for r in raws if r is not None]
-            t0 = time.perf_counter()
-            per_layer = residual_code_batch(jade, good, size) if good else []          # the model on the whole pictures
-            t_model = (time.perf_counter() - t0) / max(1, len(good))
-            gi = -1
-            for p, raw in zip(chunk, raws):
-                if raw is None:
-                    print("[Infer] cannot read %s" % p)
-                    continue
-                gi += 1
-                rel = os.path.relpath(p, a.data)
-                t0 = time.perf_counter()
-                d_px = cv2.resize(maps[p], (W, H), interpolation=cv2.INTER_LINEAR)           # the same pixels as the picture
-                value, _ = apply_thresholds(d_px, colour_max, thr, area_thr)                    # pixelwise_threshold and area_threshold
-                regs = find_regions(value * 100.0, d_px, thr, grid)
-                sy, sx = raw.shape[0] / H, raw.shape[1] / W
-                for r in regs:
-                    w = r.pop("_w")
-                    x0, y0, x1, y1 = r["box"]
-                    r["area_original_px"] = int(round(r["area_px"] * sx * sy))                      # the same area in pixels of the camera picture
-                    r["box_original"] = [int(x0 * sx), int(y0 * sy), max(int(x1 * sx), int(x0 * sx) + 1), max(int(y1 * sy), int(y0 * sy) + 1)]
-                    r["residual"] = {"L%d" % l: np.round(w @ res[gi] / w.sum(), 3).tolist() for l, (res, _) in zip(layers, per_layer)}
-                    r["code"] = {"L%d" % l: np.round(w @ code[gi] / w.sum(), 3).tolist() for l, (_, code) in zip(layers, per_layer)}
-                    n_regions += 1
-                region_times.append((time.perf_counter() - t0 + t_model, 1))
-                d = {"image": rel, "sig": sig, "image_size": [H, W], "original_size": [raw.shape[0], raw.shape[1]],
-                     "n_regions": len(regs), "regions": regs}
-                f = rfile(rel)
-                os.makedirs(os.path.dirname(f), exist_ok=True)
-                with open(f + ".tmp", "w") as fh:
-                    json.dump(d, fh, separators=(",", ":"))
-                os.replace(f + ".tmp", f)
-            if (ci + 1) % max(1, 200 // a.batch) == 0:
-                print("[Infer] regions %d / %d pictures" % (min((ci + 1) * a.batch, len(todo)), len(todo)), flush=True)
-    print("[Infer] %d regions found in %d pictures, saved in %s" % (n_regions, len(todo), os.path.join(a.out, "regions")), flush=True)
-    timing("regions (model on the picture, find, average)", region_times)
 
 
 def main():
@@ -423,7 +285,6 @@ def main():
         print("[Area] %d regions after pixelwise_threshold, area in pixels of the %dx%d picture: min %d | 10%% %d | 25%% %d | median %d | 75%% %d | 90%% %d | max %d"
               % (len(ar), W, H, ar.min(), np.percentile(ar, 10), np.percentile(ar, 25), np.median(ar), np.percentile(ar, 75), np.percentile(ar, 90), ar.max()), flush=True)
         print("[Area] area_threshold = %g: %d regions removed, %d kept" % (area_thr, (ar < area_thr).sum(), (ar >= area_thr).sum()), flush=True)
-    region_stage(a, jade, layers, grid, (H, W), device, meta, paths, maps, thr, area_thr, colour_max)
 
     v = np.array([r[2] for r in rows])
     print("[Infer] combined max error over %d pictures: median %.3f | p95 %.3f | max %.3f" % (len(v), np.median(v), np.percentile(v, 95), v.max()))

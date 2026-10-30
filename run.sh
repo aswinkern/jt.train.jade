@@ -4,13 +4,14 @@
 #   ./run.sh infer     --data FOLDER --checkpoint FILE --out FOLDER [--config FILE] [--settings FILE] [--gpu N] [--limit N] [--batch N] [--redo]
 #   ./run.sh pretrain | calibrate | analyse | export     [--config FILE] [--gpu N]
 #
+# --gpu N      which GPU: default the gpu_id of the config.yaml (the --settings one for infer), 0 if there is none
 # train       trains with --config (default: the config.yaml next to this file) on the data folder of data.data_dir (or --data).
 #             The data folder holds images/ = OK pictures (training) and NG/ = NG pictures (only shown in TensorBoard, never trained on).
 #             If a folder is missing it is created and you are told where to drop the pictures; with no OK picture it stops before training.
 #             Every run gets its own folder <out>/exp_N (never
 #             overwrites): config.yaml (@EXP@ in the config is replaced by that folder), checkpoints/, run.log. Default --out: <workspace_path of the config>/experiments
 # infer       the trained model on any folder of pictures (sub-folders are searched too). Writes to --out: raw/ (model output, no
-#             post-processing), post/ (result with the settings), regions/ (features of every predicted region, one json per picture),
+#             post-processing), post/ (result with the settings),
 #             scores.csv, pictures/ [original | heat map].
 #   --config    model definition (backbone, layers, bottleneck): default the config.yaml of the run that owns the checkpoint (<checkpoint dir>/../config.yaml)
 #   --settings  where model.layer_weights, featurewise_threshold, heatmap_scaling_factor, pixelwise_threshold, area_threshold are read from:
@@ -20,12 +21,14 @@
 #   --redo      run the model on every picture again (default: use <out>/raw/ when the checkpoint, data folder and
 #               featurewise_threshold are the same, so the other settings only redo post/, scores.csv and pictures/)
 # pretrain ... export   the other steps of the original pipeline, each reads the paths it needs from --config (a run's config.yaml)
-# The data, weights (model.feature_extractor.weights_path) and workspace_path of the config must exist on this machine. Files are written as you, not as root.
+# The data, weights (model.feature_extractor.weights_path) and workspace_path of the config must exist on this machine.
+# Docker runs as you (not root) with your umask, so everything it saves (checkpoints, tensorboard, run.log, raw/ post/ pictures/) belongs to you
+# and has the same permissions as files you make yourself: no permission problems, nothing owned by root.
 # Relative paths and symlinks are fine; they are resolved here.
 CODE=$(dirname "$(readlink -f "$0")")
 CMD=$1; shift
 case "$CMD" in train|infer|pretrain|calibrate|analyse|export) ;; *) sed -n 2,6p "$0"; exit 1;; esac
-GPU=0; CFG=""; OUT=""; DATA=""; CK=""; SET=""; LIMIT=0; BATCH=8; REDO=""
+GPU=""; CFG=""; OUT=""; DATA=""; CK=""; SET=""; LIMIT=0; BATCH=8; REDO=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --config) CFG=$2; shift 2;; --out) OUT=$2; shift 2;; --gpu) GPU=$2; shift 2;; --data) DATA=$2; shift 2;;
@@ -51,6 +54,11 @@ else
   CFG=$(readlink -f "$CFG"); WS_CFG=$CFG
 fi
 
+# GPU: --gpu, else gpu_id of the config (infer: the --settings file, the one you edit)
+[ -n "$GPU" ] || GPU=$(python3 -c "import yaml,sys;print(yaml.safe_load(open(sys.argv[1])).get(\"gpu_id\", 0))" "${SET:-$CFG}")
+case "$GPU" in ""|*[!0-9]*) echo "gpu id must be a number (0, 1 ...), got: $GPU"; exit 1;; esac
+echo "[Run] gpu: $GPU"
+
 # workspace_path of the config: its data, weights and sim folders are mounted at that path (like the paths inside the config)
 WS=$(python3 -c "import yaml,sys;print(yaml.safe_load(open(sys.argv[1]))['customer']['workspace_path'])" "$WS_CFG") || { echo "no customer.workspace_path in $WS_CFG"; exit 1; }
 [ -d "$WS" ] || { echo "workspace_path not found: $WS"; exit 1; }
@@ -69,7 +77,7 @@ done
 PY=/jidoka/install/conda/envs/torch-gpu/bin/python
 FILTER="xFormers|warnings.warn|NVIDIA|TensorRT|Copyright|CUDA|Container|container|https://|Various|plugins|run /opt|To install|See https|Forward|WARNING|was built|with this|Using driver|====="
 docker_run() {   # docker_run <script and arguments...>
-  docker run --rm --user $(id -u):$(id -g) -e HOME=/tmp --shm-size=8g --gpus "\"device=$GPU\"" -v $REAL_WS:$WS:$WSMODE $MARGS -w $CODE training:latest $PY -u "$@" 2>&1
+  docker run --rm --user $(id -u):$(id -g) -e HOME=/tmp --shm-size=8g --gpus "\"device=$GPU\"" -v $REAL_WS:$WS:$WSMODE $MARGS -w $CODE training:latest bash -c 'umask "$0"; exec "$@"' "$(umask)" $PY -u "$@" 2>&1
 }
 
 case "$CMD" in
