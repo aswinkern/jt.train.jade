@@ -64,3 +64,9 @@ training:
     checkpoint_frequency_epochs: 5
     checkpoint_dir: "@EXP@/checkpoints"
     tensorboard_dir: "@EXP@/tensorboard"
+
+export:
+    models_dir: "/jidoka/simulations/jdisk3/jt.cust.anomaly_jade_v3/models"   # the models folder of this customer (next to sim_object_detection)
+    model_name: "Anomaly_v1.0.0"   # name and version of the model: models/<model_name>/Serving_model/ (config.pbtxt, 1/model.onnx); also the name in config.pbtxt
+    experiment: "exp_1"       # which run to export: the exp_N folder next to this config.yaml
+    epoch: 50                 # which checkpoint: <experiment>/checkpoints/epoch_<epoch>.pt (run.sh --export --checkpoint FILE overrides experiment and epoch)
