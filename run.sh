@@ -19,16 +19,18 @@
 #                                     folder, --batch N pictures per GPU step (default 8, lower it if the GPU runs out of memory), --redo
 #                                     runs the model again (default: raw/ is reused when checkpoint, pictures and featurewise_threshold are the same).
 #   ./run.sh --tensorboard            only TensorBoard on this folder (Ctrl+C to stop)
-#   ./run.sh --export [--checkpoint <epoch_N.pt>] [--out <folder>] [--batch_range MIN,OPT,MAX]
+#   ./run.sh --export [--checkpoint <epoch_N.pt>] [--out <folder>] [--max_batch N]
 #                                     export.model_name, export.experiment and export.epoch of config.yaml say which model name and which
 #                                     checkpoint (<experiment>/checkpoints/epoch_<epoch>.pt); --checkpoint overrides experiment and epoch.
 #                                     ONNX for Triton / TensorRT into export.models_dir/export.model_name/Serving_model/ (the models folder of the customer,
-#                                     --out replaces models_dir/model_name): 1/model.onnx (+ .data, dynamic batch), config.pbtxt,
-#                                     settings.json (picture size and the three thresholds for the client, editable any time), trtexec_command.txt.
-#                                     An existing model of that name is never overwritten: use a new export.model_name (version).
+#                                     --out replaces models_dir/model_name): 1/model.onnx (+ .data, dynamic batch), config.pbtxt.
+#                                     export.model_name, export.experiment and export.epoch of config.yaml say which model name and which
+#                                     checkpoint (<experiment>/checkpoints/epoch_<epoch>.pt); --checkpoint overrides experiment and epoch.
 #                                     The model is RAW (picture -> error map): only layer_weights and featurewise_threshold of config.yaml are baked in;
-#                                     heatmap_scaling_factor, pixelwise_threshold and area_threshold are applied by the client, no new export needed.
-#                                     It checks the ONNX against PyTorch on OK pictures. --batch_range is the batch range of the TensorRT engine (default 1,8,16).
+#                                     heatmap_scaling_factor, pixelwise_threshold and area_threshold are variables at the top of triton/triton_client.py
+#                                     (the export prints them, ready to paste), so they change without a new export. It checks the ONNX against PyTorch on OK
+#                                     pictures. An existing model of that name is never overwritten: use a new export.model_name (version), or --overwrite.
+#                                     --max_batch is the largest batch, max_batch_size of config.pbtxt (default 16).
 #   ./run.sh --pretrain | --calibrate | --analyse [--config exp_N/config.yaml]    the other steps of the original pipeline
 #
 #   --config <file>   default config.yaml in this folder          --gpu N   default gpu_id of the config (0 or 1)
@@ -43,7 +45,7 @@ FILTER="xFormers|warnings.warn|NVIDIA|TensorRT|Copyright|CUDA|Container|containe
 
 # ── Arguments ─────────────────────────────────────────────────────────────────
 ORIG_ARGS=("$@")
-CMD=train; CONFIG="config.yaml"; GPU=""; INFER_DIR=""; CK=""; OUT=""; SET=""; LIMIT=0; BATCH=8; REDO=""; BATCH_RANGE="1,8,16"
+CMD=train; CONFIG="config.yaml"; GPU=""; INFER_DIR=""; CK=""; OUT=""; SET=""; LIMIT=0; BATCH=8; REDO=""; MAX_BATCH=16
 while [ $# -gt 0 ]; do
     case "$1" in
         --config)      CONFIG="$2"; shift 2 ;;
@@ -56,7 +58,7 @@ while [ $# -gt 0 ]; do
         --settings)    SET="$2"; shift 2 ;;
         --limit)       LIMIT="$2"; shift 2 ;;
         --batch)       BATCH="$2"; shift 2 ;;
-        --batch_range) BATCH_RANGE="$2"; shift 2 ;;
+        --max_batch)   MAX_BATCH="$2"; shift 2 ;;
         --redo)        REDO="--redo"; shift ;;
         --pretrain|--calibrate|--analyse|--export) CMD="${1#--}"; shift ;;
         --tensorboard) CMD=tensorboard; shift ;;
@@ -198,5 +200,5 @@ case "$CMD" in
   analyse)   $PY -u "$CODE_DIR/tools/analyse.py" -c "$CONFIG" 2>&1 | grep --line-buffered -v -E "$FILTER" ;;
   export)
     CKARG=(); if [ -n "$CK" ]; then [ -f "$CK" ] || { echo "[ERROR] checkpoint not found: $CK"; exit 1; }; CKARG=(--checkpoint "$CK"); fi
-    $PY -u "$CODE_DIR/tools/export.py" -c "$CONFIG" "${CKARG[@]}" ${OUT:+--out "$OUT"} --batch_range "$BATCH_RANGE" 2>&1 | grep --line-buffered -v -E "$FILTER" ;;
+    $PY -u "$CODE_DIR/tools/export.py" -c "$CONFIG" "${CKARG[@]}" ${OUT:+--out "$OUT"} --max_batch "$MAX_BATCH" 2>&1 | grep --line-buffered -v -E "$FILTER" ;;
 esac

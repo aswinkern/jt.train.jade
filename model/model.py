@@ -143,7 +143,7 @@ class JADE_v3(nn.Module):
         heatmap = combined_error.reshape(-1, 1, patch_h, patch_w)
         heatmap = F.interpolate(heatmap, size=(H_img, W_img),
                                 mode="bilinear", align_corners=False)
-        return heatmap.squeeze(1)   # (B, H, W)
+        return heatmap.reshape(-1, H_img, W_img)   # (B, H, W); reshape, not squeeze: squeeze is exported as an If node that TensorRT cannot parse
 
     def get_error_map(self, x):
         """

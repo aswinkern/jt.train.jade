@@ -1,13 +1,12 @@
 """
 JADE_v3 Triton client (gRPC). Gives the same result as `run.sh --infer`: the model returns the raw error map, and the post-processing
-is the shared code of inference/postprocess.py with the numbers of settings.json (made by the export, next to the model; edit the
-thresholds there any time, no new export needed).
-  python triton_client.py -i <picture or folder> -o <output folder> -s <settings.json> [-u localhost:8001] [--batch 8]
+is the shared code of inference/postprocess.py with the numbers below (the same numbers as config.yaml; `run.sh --export` prints this
+block for the model it exported). The thresholds can be changed here any time, no new export needed.
+  python triton_client.py -i <picture or folder> -o <output folder> [-u localhost:8001] [--batch 8]
 Output: for every picture <name>.png = [original | heat map] and one line with p99, max and the number of regions.
 """
 import os
 import sys
-import json
 import argparse
 
 import cv2
@@ -16,6 +15,17 @@ import tritonclient.grpc as grpcclient
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))      # the repo: inference/postprocess.py needs only numpy + opencv
 from inference.postprocess import prepare_picture, apply_thresholds, scores
+
+# ── Settings: change them here ────────────────────────────────────────────────────────────────────────────────────────
+MODEL_NAME = "Anomaly_v1.0.0"       # model name in Triton (export.model_name)
+INPUT_NAME = "image"
+OUTPUT_NAME = "error_map"
+IMAGE_SIZE = (518, 518)             # height, width the model was exported for
+MAX_BATCH = 16                      # the largest batch (--max_batch of the export, default 16)
+HEATMAP_SCALING_FACTOR = 0.3        # error / this number, clipped to 0..1: the number or more = dark red
+PIXELWISE_THRESHOLD = 70            # (0-100) weaker pixels are drawn dark blue; None = nothing is hidden
+AREA_THRESHOLD = 35                 # (pixels of the picture) smaller regions are removed; 0 = off
+# ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 
 def find_pictures(path):
@@ -34,22 +44,17 @@ def main():
     ap = argparse.ArgumentParser(description="JADE_v3 Triton gRPC client")
     ap.add_argument("-i", "--image", required=True, help="picture or folder of pictures")
     ap.add_argument("-o", "--output", required=True, help="output folder")
-    ap.add_argument("-s", "--settings", required=True, help="settings.json written by the export")
     ap.add_argument("-u", "--url", default="localhost:8001", help="Triton gRPC URL")
-    ap.add_argument("--batch", type=int, default=1, help="pictures per request (at most the max batch of the export)")
+    ap.add_argument("--batch", type=int, default=1, help="pictures per request (at most MAX_BATCH)")
     a = ap.parse_args()
 
-    S = json.load(open(a.settings))
-    H, W = S["image_size"]
-    colour_max, thr, area_thr = S["settings"]["heatmap_scaling_factor"], S["settings"]["pixelwise_threshold"], S["settings"]["area_threshold"]
-    if not colour_max:
-        raise SystemExit("[Client] heatmap_scaling_factor is not set in %s" % a.settings)
-    if a.batch > S["batch"]["max"]:
-        raise SystemExit("[Client] --batch %d is more than the max batch %d of the export" % (a.batch, S["batch"]["max"]))
-    print("[Client] heatmap_scaling_factor %g | pixelwise_threshold %s | area_threshold %g  (from %s)" % (colour_max, thr, area_thr, a.settings))
+    H, W = IMAGE_SIZE
+    if a.batch > MAX_BATCH:
+        raise SystemExit("[Client] --batch %d is more than MAX_BATCH %d" % (a.batch, MAX_BATCH))
+    print("[Client] HEATMAP_SCALING_FACTOR %g | PIXELWISE_THRESHOLD %s | AREA_THRESHOLD %g" % (HEATMAP_SCALING_FACTOR, PIXELWISE_THRESHOLD, AREA_THRESHOLD))
 
     client = grpcclient.InferenceServerClient(url=a.url, verbose=False)
-    print("[Client] Triton: %s, model %s" % (a.url, S["model_name"]))
+    print("[Client] Triton: %s, model %s" % (a.url, MODEL_NAME))
     pics = find_pictures(a.image)
     if not pics:
         raise SystemExit("[Client] no pictures in %s" % a.image)
@@ -65,18 +70,18 @@ def main():
         if not good:
             continue
         x = np.stack([prepare_picture(r, (H, W)) for _, r in good])                  # (B, 3, H, W)
-        inp = grpcclient.InferInput(S["input"]["name"], list(x.shape), "FP32")
+        inp = grpcclient.InferInput(INPUT_NAME, list(x.shape), "FP32")
         inp.set_data_from_numpy(x)
-        maps = client.infer(S["model_name"], inputs=[inp], outputs=[grpcclient.InferRequestedOutput(S["output"]["name"])]).as_numpy(S["output"]["name"])   # (B, H, W)
+        maps = client.infer(MODEL_NAME, inputs=[inp], outputs=[grpcclient.InferRequestedOutput(OUTPUT_NAME)]).as_numpy(OUTPUT_NAME)   # (B, H, W)
         for (p, raw), err in zip(good, maps):
             p99, mx = scores(err)
-            value, areas = apply_thresholds(err, colour_max, thr, area_thr)
+            value, areas = apply_thresholds(err, HEATMAP_SCALING_FACTOR, PIXELWISE_THRESHOLD, AREA_THRESHOLD)
             base = cv2.resize(raw, (W, H))
             heat = cv2.applyColorMap((value * 255).astype(np.uint8), cv2.COLORMAP_JET)
             img = np.concatenate([label(base.copy(), os.path.basename(p)[:60]),
-                                  label(cv2.addWeighted(base, 0.5, heat, 0.5, 0), "p99 %.3f  max %.3f  (dark red = %.3f)" % (p99, mx, colour_max))], axis=1)
+                                  label(cv2.addWeighted(base, 0.5, heat, 0.5, 0), "p99 %.3f  max %.3f  (dark red = %.3f)" % (p99, mx, HEATMAP_SCALING_FACTOR))], axis=1)
             cv2.imwrite(os.path.join(a.output, os.path.splitext(os.path.basename(p))[0] + ".png"), img)
-            n_reg = int((areas >= area_thr).sum()) if area_thr > 0 else len(areas)
+            n_reg = int((areas >= AREA_THRESHOLD).sum()) if AREA_THRESHOLD > 0 else len(areas)
             print("[Client] %s  p99 %.3f  max %.3f  regions %d" % (os.path.basename(p), p99, mx, n_reg))
     print("[Client] Done. Pictures in %s" % a.output)
 
