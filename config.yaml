@@ -1,12 +1,13 @@
-# JADE config: the one you edit. run.sh train copies this file into <out>/exp_N/config.yaml and replaces @EXP@ with that folder.
+# JADE config. Copy this file and run.sh into a sim folder and run ./run.sh there. Paths are /jidoka/... paths (as seen inside the docker container).
+# run.sh train copies this file into ./exp_N/config.yaml and replaces @EXP@ with that folder.
 gpu_id: 0        # which GPU run.sh uses: 0 or 1 (two GPUs in this server). run.sh --gpu N overrides it.
+code_dir: "/jidoka/code/jt.train.jade"      # where the JADE code is (the code is never copied into the sim folder)
 
 customer:
     customer_name: "BorgWarner_138P"
-    workspace_path: "/jidoka_training/simulations/jdisk3/jt.cust.anomaly_jade_v3"
 
 data:
-    data_dir: "/jidoka_training/simulations/jdisk3/jt.cust.anomaly_jade_v3/data_object_detection/data_1"   # run.sh train --data FOLDER overrides it. images/ = OK pictures (training), NG/ = NG pictures (only shown in TensorBoard)
+    data_dir: "/jidoka/simulations/jdisk3/jt.cust.anomaly_jade_v3/data_object_detection/data_1"   # images/ = OK pictures (training), NG/ = NG pictures (only shown in TensorBoard)
     image_extensions: ["*.png", "*.jpg", "*.jpeg"]
     batch_size: 8
     num_workers: 4
@@ -23,7 +24,7 @@ data:
 model:
     feature_extractor:
         type: "dinov2_vitl14_reg"       # DINOv2 ViT-L with registers (no abnormal token on blank patches)
-        weights_path: "/mnt/jdisk3/jidoka_training/models/jade/dinov2_vitl14_reg4_pretrain.pth"      # real path (not a symlink): run.sh mounts this folder into docker
+        weights_path: "/jidoka/models/jade/dinov2_vitl14_reg4_pretrain.pth"
         adapted_weights_path: ""
         trainable: false
         normalize_features: true        # divide every layer by its typical size (measured at the start of training)

@@ -1,89 +1,150 @@
 #!/bin/bash
-# JADE_v3: one entry point (docker image training:latest, GPU). Run it from anywhere.
-#   ./run.sh train     [--config FILE] [--data FOLDER] [--out FOLDER] [--gpu N]
-#   ./run.sh infer     --data FOLDER --checkpoint FILE --out FOLDER [--config FILE] [--settings FILE] [--gpu N] [--limit N] [--batch N] [--redo]
-#   ./run.sh pretrain | calibrate | analyse | export     [--config FILE] [--gpu N]
+# ─────────────────────────────────────────────────────────────────────────────
+# run.sh — JADE_v3 (Docker-enabled), same idea as jt.train.yolonas/run.sh
 #
-# --gpu N      which GPU: default the gpu_id of the config.yaml (the --settings one for infer), 0 if there is none
-# train       trains with --config (default: the config.yaml next to this file) on the data folder of data.data_dir (or --data).
-#             The data folder holds images/ = OK pictures (training) and NG/ = NG pictures (only shown in TensorBoard, never trained on).
-#             If a folder is missing it is created and you are told where to drop the pictures; with no OK picture it stops before training.
-#             Every run gets its own folder <out>/exp_N (never
-#             overwrites): config.yaml (@EXP@ in the config is replaced by that folder), checkpoints/, run.log. Default --out: <workspace_path of the config>/experiments
-# infer       the trained model on any folder of pictures (sub-folders are searched too). Writes to --out: raw/ (model output, no
-#             post-processing), post/ (result with the settings),
-#             scores.csv, pictures/ [original | heat map].
-#   --config    model definition (backbone, layers, bottleneck): default the config.yaml of the run that owns the checkpoint (<checkpoint dir>/../config.yaml)
-#   --settings  where model.layer_weights, featurewise_threshold, heatmap_scaling_factor, pixelwise_threshold, area_threshold are read from:
-#               default the config.yaml next to this file (the one you edit). The run's own copy is NOT used for these.
-#   --limit N   score only N pictures, evenly spread over the folder (default: all)
-#   --batch N   pictures sent to the GPU together (default 8; lower it if the GPU runs out of memory, e.g. 4)
-#   --redo      run the model on every picture again (default: use <out>/raw/ when the checkpoint, data folder and
-#               featurewise_threshold are the same, so the other settings only redo post/, scores.csv and pictures/)
-# pretrain ... export   the other steps of the original pipeline, each reads the paths it needs from --config (a run's config.yaml)
-# The data, weights (model.feature_extractor.weights_path) and workspace_path of the config must exist on this machine.
-# Docker runs as you (not root) with your umask, so everything it saves (checkpoints, tensorboard, run.log, raw/ post/ pictures/) belongs to you
-# and has the same permissions as files you make yourself: no permission problems, nothing owned by root.
-# Relative paths and symlinks are fine; they are resolved here.
-CODE=$(dirname "$(readlink -f "$0")")
-CMD=$1; shift
-case "$CMD" in train|infer|pretrain|calibrate|analyse|export) ;; *) sed -n 2,6p "$0"; exit 1;; esac
-GPU=""; CFG=""; OUT=""; DATA=""; CK=""; SET=""; LIMIT=0; BATCH=8; REDO=""
+#   Copy run.sh and config.yaml into a sim folder, open a terminal there and run ./run.sh
+#   It opens the docker container itself. The code is NOT copied: code_dir in config.yaml says where it is.
+#   Everything it saves (exp_N/ ...) goes into the folder you run it from, as you (never root), with group-writable permissions.
+#
+#   ./run.sh                          train. Data folder = data_dir of config.yaml, it holds images/ (OK pictures, used for training)
+#                                     and NG/ (NG pictures, only shown in TensorBoard, never trained on). A missing folder is created and
+#                                     you are told where to drop the pictures; with no OK picture it stops before training.
+#                                     Each run gets its own folder ./exp_N (never overwrites): config.yaml, checkpoints/, tensorboard/, run.log
+#                                     TensorBoard starts with the training, its address is printed (the port is free-picked from 6001).
+#   ./run.sh --infer <folder> --checkpoint <epoch_N.pt> --out <folder>   [--settings <config.yaml>] [--limit N] [--batch N] [--redo]
+#                                     the trained model on any folder of pictures (sub-folders too). Writes to --out: raw/ (model output, no
+#                                     post-processing), post/ (result with the settings), scores.csv, pictures/ [original | heat map].
+#                                     The settings (layer_weights, featurewise_threshold, heatmap_scaling_factor, pixelwise_threshold,
+#                                     area_threshold) come from config.yaml (or --settings). --limit N scores only N pictures spread over the
+#                                     folder, --batch N pictures per GPU step (default 8, lower it if the GPU runs out of memory), --redo
+#                                     runs the model again (default: raw/ is reused when checkpoint, pictures and featurewise_threshold are the same).
+#   ./run.sh --tensorboard            only TensorBoard on this folder (Ctrl+C to stop)
+#   ./run.sh --pretrain | --calibrate | --analyse | --export [--config exp_N/config.yaml]    the other steps of the original pipeline
+#
+#   --config <file>   default config.yaml in this folder          --gpu N   default gpu_id of the config (0 or 1)
+#   Paths on the command line may be host paths (/mnt/jdisk3/...) or /jidoka/... paths. Paths inside config.yaml are /jidoka/... paths.
+# ─────────────────────────────────────────────────────────────────────────────
+
+USE_DOCKER=${USE_DOCKER:-true}
+DOCKER_IMAGE="training:latest"
+PY=/jidoka/install/conda/envs/torch-gpu/bin/python
+TB=/jidoka/install/conda/envs/torch-gpu/bin/tensorboard
+FILTER="xFormers|warnings.warn|NVIDIA|TensorRT|Copyright|CUDA|Container|container|https://|Various|plugins|run /opt|To install|See https|Forward|WARNING|was built|with this|Using driver|====="
+
+# ── Arguments ─────────────────────────────────────────────────────────────────
+ORIG_ARGS=("$@")
+CMD=train; CONFIG="config.yaml"; GPU=""; INFER_DIR=""; CK=""; OUT=""; SET=""; LIMIT=0; BATCH=8; REDO=""
 while [ $# -gt 0 ]; do
-  case "$1" in
-    --config) CFG=$2; shift 2;; --out) OUT=$2; shift 2;; --gpu) GPU=$2; shift 2;; --data) DATA=$2; shift 2;;
-    --checkpoint) CK=$2; shift 2;; --settings) SET=$2; shift 2;; --limit) LIMIT=$2; shift 2;; --batch) BATCH=$2; shift 2;; --redo) REDO="--redo"; shift;;
-    *) echo "unknown option $1"; sed -n 2,6p "$0"; exit 1;;
-  esac
+    case "$1" in
+        --config)      CONFIG="$2"; shift 2 ;;
+        --gpu)         GPU="$2"; shift 2 ;;
+        --infer)
+            if [ -z "$2" ] || [[ "$2" == --* ]]; then echo "[ERROR] --infer needs a folder of pictures, e.g. ./run.sh --infer /path/to/pictures --checkpoint exp_1/checkpoints/epoch_50.pt --out ./infer_1"; exit 1; fi
+            CMD=infer; INFER_DIR="$2"; shift 2 ;;
+        --checkpoint)  CK="$2"; shift 2 ;;
+        --out)         OUT="$2"; shift 2 ;;
+        --settings)    SET="$2"; shift 2 ;;
+        --limit)       LIMIT="$2"; shift 2 ;;
+        --batch)       BATCH="$2"; shift 2 ;;
+        --redo)        REDO="--redo"; shift ;;
+        --pretrain|--calibrate|--analyse|--export) CMD="${1#--}"; shift ;;
+        --tensorboard) CMD=tensorboard; shift ;;
+        -h|--help)     sed -n '2,/^# ───.*$/p' "$0" | sed '1d;$d' | cut -c3-; exit 0 ;;
+        *)             echo "[ERROR] Unknown argument: $1 (./run.sh --help)"; exit 1 ;;
+    esac
 done
 
-if [ "$CMD" = infer ]; then
-  if [ -z "$DATA" ] || [ -z "$CK" ] || [ -z "$OUT" ]; then sed -n 2,6p "$0"; echo "infer needs --data --checkpoint --out"; exit 1; fi
-  [ -d "$DATA" ] || { echo "data folder not found: $DATA"; exit 1; }
-  [ -f "$CK" ] || { echo "checkpoint not found: $CK"; exit 1; }
-  DATA=$(readlink -f "$DATA"); CK=$(readlink -f "$CK")
-  [ -n "$CFG" ] || CFG=$(dirname "$CK")/../config.yaml
-  [ -n "$SET" ] || SET=$CODE/config.yaml
-  [ -f "$CFG" ] || { echo "config not found: $CFG (give --config)"; exit 1; }
-  [ -f "$SET" ] || { echo "settings file not found: $SET (give --settings)"; exit 1; }
-  CFG=$(readlink -f "$CFG"); SET=$(readlink -f "$SET")
-  WS_CFG=$CFG
-else
-  [ -n "$CFG" ] || CFG=$CODE/config.yaml
-  [ -f "$CFG" ] || { echo "config not found: $CFG"; exit 1; }
-  CFG=$(readlink -f "$CFG"); WS_CFG=$CFG
+# ── Launch the Docker container (skipped when already inside it) ──────────────
+if [ "$USE_DOCKER" = true ] && [ ! -f /.dockerenv ]; then
+    [ -f "$CONFIG" ] || { echo "[ERROR] Config not found: $CONFIG (put run.sh and config.yaml in the same folder, or use --config)"; exit 1; }
+    if [ -z "$GPU" ]; then
+        GPU=$(python3 -c "import yaml,sys;print(yaml.safe_load(open(sys.argv[1])).get('gpu_id', 0))" "$CONFIG") || exit 1
+    fi
+    case "$GPU" in ""|*[!0-9]*) echo "[ERROR] gpu id must be a number (0, 1 ...), got: $GPU"; exit 1;; esac
+
+    # Translate a host path to its Docker path (the mounts below)
+    translate_path() {
+        local p="$1"
+        if   [[ "$p" == /mnt/jdisk3/jidoka_training/simulations/* ]]; then echo "/jidoka/simulations${p#/mnt/jdisk3/jidoka_training/simulations}"
+        elif [[ "$p" == /mnt/jdisk3/jidoka_training_jdisk3/simulations/* ]]; then echo "/jidoka/simulations/jdisk3${p#/mnt/jdisk3/jidoka_training_jdisk3/simulations}"
+        elif [[ "$p" == /mnt/jdisk4/jidoka_training_jdisk4/simulations/* ]]; then echo "/jidoka/simulations/jdisk4${p#/mnt/jdisk4/jidoka_training_jdisk4/simulations}"
+        elif [[ "$p" == /jidoka_training/simulations/* ]]; then echo "/jidoka/simulations${p#/jidoka_training/simulations}"
+        elif [[ "$p" == /mnt/jdisk3/jidoka_training_jdisk3/workspace/* ]]; then echo "/jidoka/workspace/jdisk3${p#/mnt/jdisk3/jidoka_training_jdisk3/workspace}"
+        elif [[ "$p" == /mnt/jdisk4/jidoka_training_jdisk4/workspace/* ]]; then echo "/jidoka/workspace/jdisk4${p#/mnt/jdisk4/jidoka_training_jdisk4/workspace}"
+        elif [[ "$p" == /jidoka_training/workspace/* ]]; then echo "/jidoka/workspace${p#/jidoka_training/workspace}"
+        elif [[ "$p" == /mnt/jdisk3/jidoka_training/code/* ]]; then echo "/jidoka/code${p#/mnt/jdisk3/jidoka_training/code}"
+        elif [[ "$p" == /jidoka_training/code/* ]]; then echo "/jidoka/code${p#/jidoka_training/code}"
+        else echo "$p"
+        fi
+    }
+    HOST_PWD="$(pwd)"
+    DOCKER_PWD="$(translate_path "$HOST_PWD")"
+
+    # One container per folder + mode, so runs on the two GPUs or train + infer side by side never collide.
+    IFS='/' read -ra PATH_PARTS <<< "$(pwd -P | sed 's|^/||')"
+    N_PARTS=${#PATH_PARTS[@]}; START=$(( N_PARTS > 3 ? N_PARTS - 3 : 0 ))
+    CONTAINER_NAME="${JADE_NAME:-jade_$(IFS=_; echo "${PATH_PARTS[*]:$START}")_${CMD}}"
+    CONTAINER_NAME="$(echo "$CONTAINER_NAME" | sed 's/[^a-zA-Z0-9_.-]/_/g')"
+    if docker ps --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"; then
+        echo "[ERROR] Already running: $CONTAINER_NAME (same folder, same mode). Stop it first:  docker stop $CONTAINER_NAME"; exit 1
+    fi
+
+    # TensorBoard port: the first free one from 6001
+    port_in_use() { ss -ltn 2>/dev/null | awk '{print $4}' | grep -qE "[:.]$1\$" || docker ps --format '{{.Ports}}' | grep -qE ":$1->"; }
+    PORT_ARGS=""; TB_HOST_PORT=""
+    if [ "$CMD" = train ] || [ "$CMD" = tensorboard ]; then
+        TB_HOST_PORT=6001; while port_in_use "$TB_HOST_PORT"; do TB_HOST_PORT=$((TB_HOST_PORT + 1)); done
+        PORT_ARGS="-p ${TB_HOST_PORT}:6006"
+    fi
+
+    # Arguments for the run inside: host paths -> Docker paths
+    PATH_FLAGS="--infer --checkpoint --out --config --settings"
+    ESCAPED_ARGS=""; TRANSLATE_NEXT=false
+    for arg in "${ORIG_ARGS[@]}"; do
+        if [ "$TRANSLATE_NEXT" = true ]; then arg="$(translate_path "$arg")"; TRANSLATE_NEXT=false
+        else for flag in $PATH_FLAGS; do [ "$arg" = "$flag" ] && TRANSLATE_NEXT=true; done; fi
+        ESCAPED_ARGS="$ESCAPED_ARGS '$(echo "$arg" | sed "s/'/'\\\\''/g")'"
+    done
+
+    echo ""
+    echo "  Mode           : $CMD"
+    echo "  GPU            : $GPU"
+    echo "  Folder         : $HOST_PWD"
+    echo "  Container      : $CONTAINER_NAME"
+    [ -n "$TB_HOST_PORT" ] && echo "  TensorBoard    : http://localhost:${TB_HOST_PORT}  (server port ${TB_HOST_PORT})"
+    echo ""
+    TTY=-i; [ -t 0 ] && [ -t 1 ] && TTY=-it
+
+    # Run as you (files are never root-owned); umask 0002 = group-writable like the files you make yourself
+    docker run --gpus "\"device=$GPU\"" $TTY --rm \
+        --name "$CONTAINER_NAME" \
+        --user "$(id -u):$(id -g)" \
+        --shm-size=8g \
+        -e HOME=/tmp \
+        -e TB_HOST_PORT="$TB_HOST_PORT" \
+        -v /mnt/jdisk3/jidoka_training/code:/jidoka/code \
+        -v /mnt/jdisk3/jidoka_training/models:/jidoka/models \
+        -v /mnt/jdisk3/jidoka_training_jdisk3/simulations/:/jidoka/simulations/jdisk3 \
+        -v /mnt/jdisk4/jidoka_training_jdisk4/simulations/:/jidoka/simulations/jdisk4 \
+        -v /mnt/jdisk3/jidoka_training_jdisk3/workspace/:/jidoka/workspace/jdisk3 \
+        -v /mnt/jdisk4/jidoka_training_jdisk4/workspace/:/jidoka/workspace/jdisk4 \
+        $PORT_ARGS \
+        -w "$DOCKER_PWD" \
+        $DOCKER_IMAGE \
+        bash -c "umask 0002; USE_DOCKER=false ./run.sh $ESCAPED_ARGS"
+    exit $?
 fi
 
-# GPU: --gpu, else gpu_id of the config (infer: the --settings file, the one you edit)
-[ -n "$GPU" ] || GPU=$(python3 -c "import yaml,sys;print(yaml.safe_load(open(sys.argv[1])).get(\"gpu_id\", 0))" "${SET:-$CFG}")
-case "$GPU" in ""|*[!0-9]*) echo "gpu id must be a number (0, 1 ...), got: $GPU"; exit 1;; esac
-echo "[Run] gpu: $GPU"
-
-# workspace_path of the config: its data, weights and sim folders are mounted at that path (like the paths inside the config)
-WS=$(python3 -c "import yaml,sys;print(yaml.safe_load(open(sys.argv[1]))['customer']['workspace_path'])" "$WS_CFG") || { echo "no customer.workspace_path in $WS_CFG"; exit 1; }
-[ -d "$WS" ] || { echo "workspace_path not found: $WS"; exit 1; }
-REAL_WS=$(readlink -f "$WS")
-WSMODE=rw; [ "$CMD" = infer ] && WSMODE=ro
-MOUNTS=" "; MARGS=""
-add_mount_as() { case "$MOUNTS" in *" $2 "*) ;; *) MOUNTS="$MOUNTS$2 "; MARGS="$MARGS -v $1:$2:$3";; esac; }      # add_mount_as <real folder> <path in the container> <ro|rw>
-add_mount() { add_mount_as "$1" "$1" "$2"; }
-add_mount "$CODE" ro; add_mount "$(dirname "$CFG")" ro
-# the DINOv2 weights of the config (absolute path): their folder is mounted at that path
-for KEY in weights_path adapted_weights_path; do
-  WP=$(python3 -c "import yaml,sys;print(yaml.safe_load(open(sys.argv[1]))[\"model\"][\"feature_extractor\"].get(sys.argv[2]) or \"\")" "$CFG" $KEY 2>/dev/null)
-  case "$WP" in /*) [ -e "$WP" ] && add_mount_as "$(readlink -f "$(dirname "$WP")")" "$(dirname "$WP")" ro;; esac
-done
-
-PY=/jidoka/install/conda/envs/torch-gpu/bin/python
-FILTER="xFormers|warnings.warn|NVIDIA|TensorRT|Copyright|CUDA|Container|container|https://|Various|plugins|run /opt|To install|See https|Forward|WARNING|was built|with this|Using driver|====="
-docker_run() {   # docker_run <script and arguments...>
-  docker run --rm --user $(id -u):$(id -g) -e HOME=/tmp --shm-size=8g --gpus "\"device=$GPU\"" -v $REAL_WS:$WS:$WSMODE $MARGS -w $CODE training:latest bash -c 'umask "$0"; exec "$@"' "$(umask)" $PY -u "$@" 2>&1
-}
+# ── From here on: inside Docker ───────────────────────────────────────────────
+[ -f "$CONFIG" ] || { echo "[ERROR] Config not found: $CONFIG"; exit 1; }
+cfg() { $PY -c "import yaml,sys;d=yaml.safe_load(open(sys.argv[1]));print(eval(sys.argv[2], {'d': d}) or '')" "$CONFIG" "$1"; }
+CODE_DIR=$(cfg "d.get('code_dir')")
+[ -f "$CODE_DIR/training/train.py" ] || { echo "[ERROR] The JADE code was not found. code_dir in $CONFIG is '$CODE_DIR' (it must be the folder with training/, model/ ...)"; exit 1; }
+echo "[Run] code: $CODE_DIR   config: $CONFIG"
 
 case "$CMD" in
   train)
-    # the data folder: images/ = OK pictures (training), NG/ = NG pictures (TensorBoard only)
-    DD=${DATA:-$(python3 -c "import yaml,sys;print(yaml.safe_load(open(sys.argv[1]))['data']['data_dir'])" "$CFG")}
+    DD=$(cfg "d['data']['data_dir']")
     mkdir -p "$DD/images" "$DD/NG"
     count() { find "$1" -maxdepth 1 -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' \) | wc -l; }
     NOK=$(count "$DD/images"); NNG=$(count "$DD/NG")
@@ -91,32 +152,38 @@ case "$CMD" in
     echo "[Run]   images/  OK pictures, used for training:                     $NOK"
     echo "[Run]   NG/      NG pictures, only shown in TensorBoard (never trained on): $NNG"
     if [ "$NOK" = 0 ]; then
-      echo "[Run] No OK pictures yet. Put the OK pictures in $DD/images and the NG pictures in $DD/NG, then run the same command again."
-      exit 0
+        echo "[Run] No OK pictures yet. Put the OK pictures in $DD/images and the NG pictures in $DD/NG, then run ./run.sh again."
+        exit 0
     fi
     [ "$NNG" = 0 ] && echo "[Run] Note: NG/ is empty, TensorBoard will show only OK pictures."
-    [ -n "$OUT" ] || OUT=$REAL_WS/experiments
-    mkdir -p "$OUT"; OUT=$(readlink -f "$OUT")
-    n=1; while [ -e "$OUT/exp_$n" ]; do n=$((n+1)); done
-    EXP=$OUT/exp_$n; mkdir -p "$EXP"
-    sed "s#@EXP@#$EXP#g" "$CFG" > "$EXP/config.yaml"
-    if [ -n "$DATA" ]; then      # --data: the run's config gets that folder (real path, mounted below)
-      DD=$(readlink -f "$DATA"); sed -i "s#^\(    data_dir:\).*#\1 \"$DD\"#" "$EXP/config.yaml"
-    fi
-    case "$DD" in "$WS"/*|"$REAL_WS"/*) ;; *) add_mount_as "$(readlink -f "$DD")" "$DD" ro;; esac
-    add_mount "$OUT" rw
-    echo "[Run] output folder: $EXP  (gpu $GPU)"; echo "[Run] config: $CFG"
-    docker_run $CODE/training/train.py -c "$EXP/config.yaml" | grep --line-buffered -v -E "$FILTER" | grep --line-buffered -v -E "^\s*$|Batch \[[1-9]" | tee "$EXP/run.log"
+    OUTDIR=$(pwd)
+    n=1; while [ -e "$OUTDIR/exp_$n" ]; do n=$((n+1)); done
+    EXP=$OUTDIR/exp_$n; mkdir -p "$EXP"
+    sed "s#@EXP@#$EXP#g" "$CONFIG" > "$EXP/config.yaml"
+    $TB --logdir "$OUTDIR" --host 0.0.0.0 --port 6006 &> /tmp/tensorboard.log &
+    echo "[Run] TensorBoard: http://localhost:${TB_HOST_PORT:-6006}  (runs: $OUTDIR/exp_N/tensorboard)"
+    echo "[Run] output folder: $EXP"
+    $PY -u "$CODE_DIR/training/train.py" -c "$EXP/config.yaml" 2>&1 | grep --line-buffered -v -E "$FILTER" | grep --line-buffered -v -E "^\s*$|Batch \[[1-9]" | tee "$EXP/run.log"
     ;;
   infer)
-    mkdir -p "$OUT"; OUT=$(readlink -f "$OUT")
-    echo "[Run] data: $DATA"; echo "[Run] checkpoint: $CK"; echo "[Run] model config: $CFG"; echo "[Run] settings read from: $SET"; echo "[Run] output: $OUT"
-    add_mount "$OUT" rw; add_mount "$DATA" ro; add_mount "$(dirname "$CK")" ro; add_mount "$(dirname "$SET")" ro
-    docker_run $CODE/inference/infer_images.py -c "$CFG" --settings "$SET" --checkpoint "$CK" --data "$DATA" -o "$OUT" --limit $LIMIT --batch $BATCH $REDO \
-      | grep --line-buffered -v -E "$FILTER" | grep --line-buffered -v -E "^\s*$"
+    [ -n "$CK" ] && [ -n "$OUT" ] || { echo "[ERROR] --infer needs --checkpoint <epoch_N.pt> and --out <folder>"; exit 1; }
+    [ -d "$INFER_DIR" ] || { echo "[ERROR] picture folder not found: $INFER_DIR"; exit 1; }
+    [ -f "$CK" ] || { echo "[ERROR] checkpoint not found: $CK"; exit 1; }
+    MODEL_CFG=$(dirname "$CK")/../config.yaml                    # the model definition of the run that owns the checkpoint
+    [ -f "$MODEL_CFG" ] || { echo "[ERROR] the run's config was not found: $MODEL_CFG"; exit 1; }
+    [ -n "$SET" ] || SET=$CONFIG
+    [ -f "$SET" ] || { echo "[ERROR] settings file not found: $SET"; exit 1; }
+    mkdir -p "$OUT"
+    echo "[Run] pictures: $INFER_DIR"; echo "[Run] checkpoint: $CK"; echo "[Run] model config: $MODEL_CFG"; echo "[Run] settings read from: $SET"; echo "[Run] output: $OUT"
+    $PY -u "$CODE_DIR/inference/infer_images.py" -c "$MODEL_CFG" --settings "$SET" --checkpoint "$CK" --data "$INFER_DIR" -o "$OUT" --limit "$LIMIT" --batch "$BATCH" $REDO 2>&1 \
+        | grep --line-buffered -v -E "$FILTER" | grep --line-buffered -v -E "^\s*$"
     ;;
-  pretrain)  docker_run $CODE/training/pretrain.py -c "$CFG" | grep --line-buffered -v -E "$FILTER" ;;
-  calibrate) docker_run $CODE/tools/calibrate.py -c "$CFG" | grep --line-buffered -v -E "$FILTER" ;;
-  analyse)   docker_run $CODE/tools/analyse.py -c "$CFG" | grep --line-buffered -v -E "$FILTER" ;;
-  export)    docker_run $CODE/tools/export.py -c "$CFG" | grep --line-buffered -v -E "$FILTER" ;;
+  tensorboard)
+    echo "[Run] TensorBoard: http://localhost:${TB_HOST_PORT:-6006}  (Ctrl+C to stop)"
+    $TB --logdir "$(pwd)" --host 0.0.0.0 --port 6006
+    ;;
+  pretrain)  $PY -u "$CODE_DIR/training/pretrain.py" -c "$CONFIG" 2>&1 | grep --line-buffered -v -E "$FILTER" ;;
+  calibrate) $PY -u "$CODE_DIR/tools/calibrate.py" -c "$CONFIG" 2>&1 | grep --line-buffered -v -E "$FILTER" ;;
+  analyse)   $PY -u "$CODE_DIR/tools/analyse.py" -c "$CONFIG" 2>&1 | grep --line-buffered -v -E "$FILTER" ;;
+  export)    $PY -u "$CODE_DIR/tools/export.py" -c "$CONFIG" 2>&1 | grep --line-buffered -v -E "$FILTER" ;;
 esac
