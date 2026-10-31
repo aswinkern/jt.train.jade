@@ -43,20 +43,15 @@ model:
     # numbers, so re-tune heatmap_scaling_factor / pixelwise_threshold after changing it. 0 = off.
     featurewise_threshold: 0.6
 
-    # Colours of the heat map in run.sh infer: error / heatmap_scaling_factor, clipped to 0..1.
-    # 0 = dark blue, a raw error equal to this number (or more) = dark red. Inference only, no retraining.
-    # Leave the line out = colours relative to the pictures being scored.
-    heatmap_scaling_factor: 0.3
+    # Colours of the heat map in run.sh infer (the same picture as the TensorBoard ones): error / heatmap_scaling_factor,
+    # clipped to 0..1. 0 = dark blue, a raw error equal to this number (or more) = dark red (100). Inference only, no retraining.
+    # Leave the line out = like TensorBoard: dark red = the 99th percentile of the error of all pixels of the pictures scored in
+    # that run (printed by run.sh infer). Set a number to give different runs (OK, NG) the same colours.
+    # heatmap_scaling_factor: 0.15
 
-    # Hides the weak glow in the run.sh infer pictures: a pixel whose colour value is at or below this (0-100, where
-    # 100 = dark red = heatmap_scaling_factor) is drawn dark blue. Inference only, no retraining.
-    # Leave the line out = nothing is hidden.
-    pixelwise_threshold: 70
-
-    # Removes small coloured regions, inference only. After pixelwise_threshold, pixels that touch each other form a
-    # region; a region with fewer pixels than this (pixels of the 518 x 518 picture) is drawn dark blue, left out of
-    # post/. 0 = off. Try a few values: 784 is about 28 x 28 px.
-    area_threshold: 35
+    # The one filter: a pixel whose colour value is at or below this (0-100, where 0 = dark blue, 100 = dark red) is drawn
+    # dark blue. Inference only, no retraining. 0 or the line left out = nothing is hidden (like TensorBoard).
+    pixelwise_threshold: 0
 
 training:
     num_epochs: 50

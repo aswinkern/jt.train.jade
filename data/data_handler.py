@@ -198,14 +198,15 @@ class DataHandler(Dataset):
         random.shuffle(self.image_paths)
 
     @staticmethod
-    def preprocess_image(image, image_size=(518, 518)):
+    def preprocess_image(image, image_size=(518, 518)):      # image_size = (height, width), like data.image_size in the config
         """
         Preprocess a single raw BGR image for inference.
         Input:  BGR numpy image
         Output: normalized tensor (1, 3, H, W)
         """
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        image = cv2.resize(image, image_size)
+        H, W = image_size
+        image = cv2.resize(image, (W, H))                       # cv2 wants (width, height)
         transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize(

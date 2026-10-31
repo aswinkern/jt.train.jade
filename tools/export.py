@@ -2,7 +2,7 @@
 ONNX export of a trained JADE_v3 for Triton / TensorRT.
 
 The exported model is RAW: picture in, error map out. Baked into it: the backbone, the autoencoders, layer_weights and
-featurewise_threshold (read from the config at export time). NOT in it: heatmap_scaling_factor, pixelwise_threshold and area_threshold -
+featurewise_threshold (read from the config at export time). NOT in it: heatmap_scaling_factor and pixelwise_threshold -
 they are applied by the client (inference/postprocess.py, the same code as `run.sh --infer`) with the variables at the top of
 triton/triton_client.py (the export prints them, ready to paste), so they can be changed any time without exporting again.
 
@@ -87,7 +87,7 @@ def main():
             raise SystemExit("[Export] checkpoint not found: %s\n[Export] epochs saved there: %s" % (a.checkpoint, ", ".join(have) or "none (is export.experiment right?)"))
     model_cfg = a.model_config or os.path.join(os.path.dirname(os.path.abspath(a.checkpoint)), "..", "config.yaml")
     cfg = yaml.load(open(model_cfg), Loader=yaml.FullLoader)
-    for key in ("layer_weights", "featurewise_threshold", "heatmap_scaling_factor", "pixelwise_threshold", "area_threshold"):
+    for key in ("layer_weights", "featurewise_threshold", "heatmap_scaling_factor", "pixelwise_threshold"):
         if key in (st.get("model") or {}):
             cfg["model"][key] = st["model"][key]
         else:
@@ -137,7 +137,7 @@ def main():
         if not pics:
             print("[Export] check skipped: no OK pictures in %s" % os.path.join(cfg["data"]["data_dir"], "images"))
         else:
-            x = torch.cat([dh.DataHandler.preprocess_image(cv2.imread(p), (W, H)) for p in pics])
+            x = torch.cat([dh.DataHandler.preprocess_image(cv2.imread(p), (H, W)) for p in pics])
             with torch.no_grad():
                 ref = wrapper(x.to(device)).float().cpu().numpy()                    # PyTorch, whole batch
             sess = ort.InferenceSession(final_onnx, providers=["CPUExecutionProvider"])
@@ -162,9 +162,8 @@ def main():
     print('  MODEL_NAME = "%s"' % MODEL_NAME)
     print("  IMAGE_SIZE = (%d, %d)        # height, width" % (H, W))
     print("  MAX_BATCH = %d" % bmax)
-    print("  HEATMAP_SCALING_FACTOR = %s" % cfg["model"].get("heatmap_scaling_factor"))
+    print("  HEATMAP_SCALING_FACTOR = %s" % (cfg["model"].get("heatmap_scaling_factor") or "<a number: the client needs one; --infer prints the dark-red value it used>"))
     print("  PIXELWISE_THRESHOLD = %s" % cfg["model"].get("pixelwise_threshold"))
-    print("  AREA_THRESHOLD = %g" % float(cfg["model"].get("area_threshold") or 0))
     print("[Export] The model folder is ready (largest batch %d). Build the TensorRT engine with your trtexec command: Serving_model/1/ then holds model.plan." % bmax)
     print("[Export] The .dvc file of the model folder is not touched: run dvc add yourself.")
 

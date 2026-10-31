@@ -2,13 +2,13 @@
 Inference with a trained JADE model on ANY folder of pictures (sub-folders are searched too).
 
 For every picture the combined heat map is scored (p99 and max of the raw error, combined and per layer) and
-written to scores.csv. A picture [ original | heat map ] is saved for every image, with the same sub-folders as the input. How much each layer counts in the combined map comes from
-model.layer_weights in the config (the --settings file, else the run's own config).
+written to scores.csv. A picture [ original | original + heat map ] is saved for every image, with the same sub-folders as the input,
+drawn exactly like the TensorBoard pictures of the training (0.6 picture + 0.4 colours, no text). How much each layer counts in the
+combined map comes from model.layer_weights in the config (the --settings file, else the run's own config).
 
-Colours: heat map = error / model.heatmap_scaling_factor, clipped to 0..1: 0 = dark blue, the raw error equal to the
-factor (or more) = dark red. The factor is a number you set in the config (--settings file, else the run's config).
-If the key is missing the colours are relative: dark red = the 99.5th percentile of the combined error over the
-pictures scored in this run (the value is printed).
+Colours: heat map = error / dark-red value, clipped to 0..1: 0 = dark blue, 100 = dark red. The dark-red value is
+model.heatmap_scaling_factor if it is set in the config (--settings file, else the run's config). If the line is missing it is
+what TensorBoard uses: the 99th percentile of the error over all pixels of the pictures scored in this run (the value is printed).
 Two JSON files are saved per picture, in two folders of --out (same sub-folders as the input, file name + .json):
   raw/   the model's error map of every layer, before any post-processing (no layer_weights, factor or pixelwise_threshold;
          layer_maps_featurewise is added when featurewise_threshold is on). Made once by the GPU.
@@ -18,10 +18,8 @@ The next run with the same --out, --data, checkpoint, image size and featurewise
 layer_weights, heatmap_scaling_factor and pixelwise_threshold only redo post/, scores.csv and pictures/.
 --redo runs the model again.
 model.featurewise_threshold (optional, 0 = off): squared feature differences at or below it count as 0 before averaging.
-model.area_threshold (pixels of the 518 x 518 picture, optional, 0 = off): after pixelwise_threshold, a coloured region (pixels that
-touch each other) with fewer pixels than this is removed: drawn dark blue, not in post/ colour values.
-model.pixelwise_threshold (0-100, optional): a pixel whose colour value, 100 x error / factor, is at or below it is
-drawn dark blue (as if nothing was found); the others keep their colour. Picture only: no OK/NG verdict.
+model.pixelwise_threshold (0-100, optional): the only filter. A pixel whose colour value (0 = dark blue ... 100 = dark red) is at
+or below it is drawn dark blue (as if nothing was found); the others keep their colour. Picture only: no OK/NG verdict.
 """
 import os
 import sys
@@ -38,8 +36,8 @@ import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))        # JADE_v3, so that model/, data/ ... can be imported
 from model import model as md                      # noqa: E402
-from inference.evaluate import error_maps_batch, label, spread   # noqa: E402
-from inference.postprocess import apply_thresholds   # noqa: E402  (shared with the Triton client)
+from inference.evaluate import error_maps_batch, spread   # noqa: E402
+from inference.postprocess import colour_value   # noqa: E402  (shared with the Triton client)
 
 
 def find_images(root, exts):
@@ -110,6 +108,21 @@ def timing(name, times):
         ", first step %.1f s left out as warm-up" % first[0] if len(times) > 1 else ""), flush=True)
 
 
+def global_p99(maps, W, H):
+    """The 99th percentile of the error over all pixels (at the size of the picture) of all the pictures: the colour scale of the
+    TensorBoard pictures. Counted in 100000 steps between 0 and the largest error, so the pictures are not all in memory at once."""
+    maps = list(maps)
+    top = max(float(m.max()) for m in maps)
+    if top <= 0:
+        return 0.0
+    steps = 100000
+    count = np.zeros(steps + 1, dtype=np.int64)
+    for m in maps:
+        d = cv2.resize(m, (W, H), interpolation=cv2.INTER_LINEAR)
+        count += np.bincount(np.clip(d / top * steps, 0, steps).astype(np.int64).ravel(), minlength=steps + 1)
+    return float(np.searchsorted(np.cumsum(count), 0.99 * count.sum()) / steps * top)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("-c", "--config", required=True)
@@ -127,7 +140,7 @@ def main():
     src = a.config
     if a.settings:
         st = yaml.load(open(a.settings), Loader=yaml.FullLoader)
-        for key in ("layer_weights", "featurewise_threshold", "heatmap_scaling_factor", "pixelwise_threshold", "area_threshold"):
+        for key in ("layer_weights", "featurewise_threshold", "heatmap_scaling_factor", "pixelwise_threshold"):
             if key in (st.get("model") or {}):
                 cfg["model"][key] = st["model"][key]
             else:
@@ -227,36 +240,27 @@ def main():
         colour_max = float(factor)
         print("[Infer] heatmap_scaling_factor = %g from %s: dark red = raw error %g, dark blue = 0" % (colour_max, src, colour_max))
     else:
-        colour_max = float(np.percentile(np.concatenate([m.ravel() for m in maps.values()]), 99.5))
-        print("[Infer] no heatmap_scaling_factor in %s: colours are relative, dark red = %.4f (99.5th percentile over these pictures)" % (src, colour_max))
+        colour_max = global_p99(maps.values(), W, H) or 1.0
+        print("[Infer] no heatmap_scaling_factor in %s: colours like TensorBoard, dark red = raw error %.4f (the 99th percentile of all pixels of these pictures), dark blue = 0" % (src, colour_max))
     thr = cfg["model"].get("pixelwise_threshold")
     if thr is None:
         print("[Infer] no pixelwise_threshold in %s: nothing is hidden" % src)
     else:
         print("[Infer] pixelwise_threshold = %g from %s: pixels at or below %g (of 100) are drawn dark blue" % (thr, src, thr))
-    area_thr = float(cfg["model"].get("area_threshold") or 0)
-    if area_thr > 0:
-        print("[Infer] area_threshold = %g from %s: coloured regions smaller than %g pixels (of the %dx%d picture) are drawn dark blue" % (area_thr, src, area_thr, W, H))
-    else:
-        print("[Infer] area_threshold = off (0 or not set in %s)" % src)
-    all_areas = []
     pic_dir = os.path.join(a.out, "pictures")
     byname = {r[0]: r for r in rows}
     for rel in chosen:
         p = os.path.join(a.data, rel)
         base = cv2.resize(cv2.imread(p), (W, H))
         d = cv2.resize(maps[p], (W, H), interpolation=cv2.INTER_LINEAR)
-        value, areas_i = apply_thresholds(d, colour_max, thr, area_thr)   # 0..1 colour value; weak pixels and small regions -> dark blue
-        all_areas.extend(areas_i.tolist())
+        value = colour_value(d, colour_max, thr)                          # 0..1: 0 = dark blue, 1 = dark red
         heat = cv2.applyColorMap((value * 255).astype(np.uint8), cv2.COLORMAP_JET)
-        img = np.concatenate([label(base.copy(), os.path.basename(rel)[:60]),
-                              label(cv2.addWeighted(base, 0.5, heat, 0.5, 0),
-                                    "p99 %.3f  max %.3f  (dark red = %.3f%s)" % (byname[rel][1], byname[rel][2], colour_max, ("" if thr is None else ", hidden <= %g" % thr) + ("" if area_thr <= 0 else ", regions < %g px removed" % area_thr)))], axis=1)
+        img = np.concatenate([base, cv2.addWeighted(base, 0.6, heat, 0.4, 0)], axis=1)      # the TensorBoard picture: original | original + heat map
         ph, pw = H // grid[0], W // grid[1]
         grid_value = value[:grid[0] * ph, :grid[1] * pw].reshape(grid[0], ph, grid[1], pw).mean(axis=(1, 3)) * 100.0   # the same colour value per 14 x 14 square, 0..100
         post = {"image": rel, "grid": list(grid), "layers": layers,
                 "settings": {"layer_weights": [round(w, 6) for w in jade.layer_weights], "featurewise_threshold": jade.featurewise_threshold,
-                             "heatmap_scaling_factor": colour_max, "pixelwise_threshold": thr, "area_threshold": area_thr},
+                             "heatmap_scaling_factor": colour_max, "pixelwise_threshold": thr},
                 "scores": dict(zip(["%s_%s" % (n, k) for n in names for k in ("p99", "max")], [round(x, 5) for x in byname[rel][1:]])),
                 "combined_map": np.round(maps[p], 4).ravel().tolist(), "colour_value_map": np.round(grid_value, 1).ravel().tolist()}
         post_path = os.path.join(a.out, "post", rel + ".json")
@@ -266,12 +270,6 @@ def main():
         dst = os.path.join(pic_dir, os.path.splitext(rel)[0] + ".png")
         os.makedirs(os.path.dirname(dst), exist_ok=True)
         cv2.imwrite(dst, img)
-
-    if all_areas:
-        ar = np.array(all_areas)
-        print("[Area] %d regions after pixelwise_threshold, area in pixels of the %dx%d picture: min %d | 10%% %d | 25%% %d | median %d | 75%% %d | 90%% %d | max %d"
-              % (len(ar), W, H, ar.min(), np.percentile(ar, 10), np.percentile(ar, 25), np.median(ar), np.percentile(ar, 75), np.percentile(ar, 90), ar.max()), flush=True)
-        print("[Area] area_threshold = %g: %d regions removed, %d kept" % (area_thr, (ar < area_thr).sum(), (ar >= area_thr).sum()), flush=True)
 
     v = np.array([r[2] for r in rows])
     print("[Infer] combined max error over %d pictures: median %.3f | p95 %.3f | max %.3f" % (len(v), np.median(v), np.percentile(v, 95), v.max()))

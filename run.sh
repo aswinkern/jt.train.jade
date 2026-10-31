@@ -15,8 +15,8 @@
 #   ./run.sh --infer <folder> --checkpoint <epoch_N.pt> --out <folder>   [--settings <config.yaml>] [--limit N] [--batch N] [--redo]
 #                                     the trained model on any folder of pictures (sub-folders too). Writes to --out: raw/ (model output, no
 #                                     post-processing), post/ (result with the settings), scores.csv, pictures/ [original | heat map].
-#                                     The settings (layer_weights, featurewise_threshold, heatmap_scaling_factor, pixelwise_threshold,
-#                                     area_threshold) come from config.yaml (or --settings). --limit N scores only N pictures spread over the
+#                                     The settings (layer_weights, featurewise_threshold, heatmap_scaling_factor, pixelwise_threshold)
+#                                     come from config.yaml (or --settings). The pictures look like the TensorBoard ones. --limit N scores only N pictures spread over the
 #                                     folder, --batch N pictures per GPU step (default 8, lower it if the GPU runs out of memory), --redo
 #                                     runs the model again (default: raw/ is reused when checkpoint, pictures and featurewise_threshold are the same).
 #   ./run.sh --tensorboard            only TensorBoard on this folder (Ctrl+C to stop)
@@ -28,7 +28,7 @@
 #                                     export.model_name, export.experiment and export.epoch of config.yaml say which model name and which
 #                                     checkpoint (<experiment>/checkpoints/epoch_<epoch>.pt); --checkpoint overrides experiment and epoch.
 #                                     The model is RAW (picture -> error map): only layer_weights and featurewise_threshold of config.yaml are baked in;
-#                                     heatmap_scaling_factor, pixelwise_threshold and area_threshold are variables at the top of triton/triton_client.py
+#                                     heatmap_scaling_factor and pixelwise_threshold are variables at the top of triton/triton_client.py
 #                                     (the export prints them, ready to paste), so they change without a new export. It checks the ONNX against PyTorch on OK
 #                                     pictures. An existing model of that name is never overwritten: use a new export.model_name (version), or --overwrite.
 #                                     --max_batch is the largest batch, max_batch_size of config.pbtxt (default 16).

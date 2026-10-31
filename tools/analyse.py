@@ -69,7 +69,7 @@ def analyse(config_dict):
             normalized[normalized < min_score] = 0
 
         # Suppression 2: black pixels in original image → 0
-        raw_resized = cv2.resize(raw_img, image_size)
+        raw_resized = cv2.resize(raw_img, (image_size[1], image_size[0]))        # image_size = (height, width)
         black_mask  = np.max(raw_resized, axis=2) <= black_pixel_thresh
         normalized[black_mask] = 0
 

@@ -19,7 +19,7 @@ for _p in ("/jidoka_training/code/jt.train.jade", "/jidoka_training/code/jt.trai
     if os.path.isdir(_p):
         sys.path.append(_p)
         break
-from inference.postprocess import prepare_picture, apply_thresholds, scores
+from inference.postprocess import prepare_picture, colour_value, scores
 
 # ── Settings: change them here ────────────────────────────────────────────────────────────────────────────────────────
 MODEL_NAME = "Anomaly_v1.0.0"       # model name in Triton (export.model_name)
@@ -29,7 +29,6 @@ IMAGE_SIZE = (518, 518)             # height, width the model was exported for
 MAX_BATCH = 16                      # the largest batch (--max_batch of the export, default 16)
 HEATMAP_SCALING_FACTOR = 0.3        # error / this number, clipped to 0..1: the number or more = dark red
 PIXELWISE_THRESHOLD = 70            # (0-100) weaker pixels are drawn dark blue; None = nothing is hidden
-AREA_THRESHOLD = 35                 # (pixels of the picture) smaller regions are removed; 0 = off
 # ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 
@@ -37,12 +36,6 @@ def find_pictures(path):
     if os.path.isfile(path):
         return [path]
     return sorted(os.path.join(d, f) for d, _, fs in os.walk(path) for f in fs if f.lower().endswith((".png", ".jpg", ".jpeg")))
-
-
-def label(img, text):
-    cv2.rectangle(img, (0, 0), (img.shape[1], 26), (0, 0, 0), -1)
-    cv2.putText(img, text, (6, 19), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
-    return img
 
 
 def main():
@@ -56,7 +49,7 @@ def main():
     H, W = IMAGE_SIZE
     if a.batch > MAX_BATCH:
         raise SystemExit("[Client] --batch %d is more than MAX_BATCH %d" % (a.batch, MAX_BATCH))
-    print("[Client] HEATMAP_SCALING_FACTOR %g | PIXELWISE_THRESHOLD %s | AREA_THRESHOLD %g" % (HEATMAP_SCALING_FACTOR, PIXELWISE_THRESHOLD, AREA_THRESHOLD))
+    print("[Client] HEATMAP_SCALING_FACTOR %g | PIXELWISE_THRESHOLD %s" % (HEATMAP_SCALING_FACTOR, PIXELWISE_THRESHOLD))
 
     client = grpcclient.InferenceServerClient(url=a.url, verbose=False)
     print("[Client] Triton: %s, model %s" % (a.url, MODEL_NAME))
@@ -84,14 +77,12 @@ def main():
         times.append((dt, len(good)))
         for (p, raw), err in zip(good, maps):
             p99, mx = scores(err)
-            value, areas = apply_thresholds(err, HEATMAP_SCALING_FACTOR, PIXELWISE_THRESHOLD, AREA_THRESHOLD)
+            value = colour_value(err, HEATMAP_SCALING_FACTOR, PIXELWISE_THRESHOLD)
             base = cv2.resize(raw, (W, H))
             heat = cv2.applyColorMap((value * 255).astype(np.uint8), cv2.COLORMAP_JET)
-            img = np.concatenate([label(base.copy(), os.path.basename(p)[:60]),
-                                  label(cv2.addWeighted(base, 0.5, heat, 0.5, 0), "p99 %.3f  max %.3f  (dark red = %.3f)" % (p99, mx, HEATMAP_SCALING_FACTOR))], axis=1)
+            img = np.concatenate([base, cv2.addWeighted(base, 0.6, heat, 0.4, 0)], axis=1)      # original | original + heat map, like the TensorBoard pictures
             cv2.imwrite(os.path.join(a.output, os.path.splitext(os.path.basename(p))[0] + ".png"), img)
-            n_reg = int((areas >= AREA_THRESHOLD).sum()) if AREA_THRESHOLD > 0 else len(areas)
-            print("[Client] %s  p99 %.3f  max %.3f  regions %d  inference %.1f ms" % (os.path.basename(p), p99, mx, n_reg, 1000 * dt / len(good)))
+            print("[Client] %s  p99 %.3f  max %.3f  inference %.1f ms" % (os.path.basename(p), p99, mx, 1000 * dt / len(good)))
     if times:                                                        # the first request is left out of the average (warm-up) when there are more
         rest = times[1:] if len(times) > 1 else times
         per = [t / n for t, n in rest]
