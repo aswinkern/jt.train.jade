@@ -1,56 +1,39 @@
-# JADE config. Copy this file and run.sh into a sim folder and run ./run.sh there. Paths are /jidoka/... paths (as seen inside the docker container).
-# run.sh train copies this file into ./exp_N/config.yaml and replaces @EXP@ with that folder.
-gpu_id: 0        # which GPU run.sh uses: 0 or 1 (two GPUs in this server). run.sh --gpu N overrides it.
-code_dir: "/jidoka/code/jt.train.jade"      # where the JADE code is (the code is never copied into the sim folder)
+gpu_id: 0
+code_dir: "/jidoka/code/jt.train.jade"
 
 customer:
     customer_name: "BorgWarner_138P"
 
 data:
-    data_dir: "/jidoka/simulations/jdisk3/jt.cust.anomaly_jade_v3/data_object_detection/data_1"   # images/ = OK pictures (training), NG/ = NG pictures (only shown in TensorBoard)
+    data_dir: "/jidoka/simulations/jdisk3/jt.cust.anomaly_jade_v3/data_object_detection/data_1"
     image_extensions: ["*.png", "*.jpg", "*.jpeg"]
     batch_size: 8
     num_workers: 4
-    image_size: [518, 518]          # multiple of 14 (DINOv2 patch size)
+    image_size: [518, 518]
     augmentation:
-        hsv_shift: true             # brightness / contrast / colour / hue
+        hsv_shift: true
         gaussian_blur: true
-        random_vertical_shift: true     # small shift, black fill, applied to half of the pictures
+        random_vertical_shift: true
         random_horizontal_shift: true
-        vertical_shift_frac: 0.03       # up to 3% of the picture (about 15 px of 518)
+        vertical_shift_frac: 0.03
         horizontal_shift_frac: 0.03
         random_window_mask: false
 
 model:
     feature_extractor:
-        type: "dinov2_vitl14_reg"       # DINOv2 ViT-L with registers (no abnormal token on blank patches)
+        type: "dinov2_vitl14_reg"
         weights_path: "/jidoka/models/jade/dinov2_vitl14_reg4_pretrain.pth"
         adapted_weights_path: ""
         trainable: false
-        normalize_features: true        # divide every layer by its typical size (measured at the start of training)
+        normalize_features: true
         layers: [5, 11, 17, 23]
 
     memory:
         bottleneck_size: 512
         learning_rate: 0.0001
 
-    # How much each layer counts in the final heat map, in the order of 'layers' (L5, L11, L17, L23).
-    # Inference only, no retraining: edit it and run ./run.sh infer again. Leave the line out = equal weights.
     layer_weights: [1.0, 1.0, 1.0, 1.0]
-
-    # Noise filter, inference only. Each patch is compared on 1024 small measurements; a measurement whose
-    # (squared) difference is at or below this number counts as 0 before they are averaged. Changes the error
-    # numbers, so re-tune heatmap_scaling_factor / pixelwise_threshold after changing it. 0 = off.
     featurewise_threshold: 0.6
-
-    # Colours of the heat map in run.sh infer (the same picture as the TensorBoard ones): error / heatmap_scaling_factor,
-    # clipped to 0..1. 0 = dark blue, a raw error equal to this number (or more) = dark red (100). Inference only, no retraining.
-    # Leave the line out = like TensorBoard: dark red = the 99th percentile of the error of all pixels of the pictures scored in
-    # that run (printed by run.sh infer). Set a number to give different runs (OK, NG) the same colours.
-    # heatmap_scaling_factor: 0.15
-
-    # The one filter: a pixel whose colour value is at or below this (0-100, where 0 = dark blue, 100 = dark red) is drawn
-    # dark blue. Inference only, no retraining. 0 or the line left out = nothing is hidden (like TensorBoard).
     pixelwise_threshold: 0
 
 training:
@@ -61,7 +44,7 @@ training:
     tensorboard_dir: "@EXP@/tensorboard"
 
 export:
-    models_dir: "/jidoka/simulations/jdisk3/jt.cust.anomaly_jade_v3/models"   # the models folder of this customer (next to sim_object_detection)
-    model_name: "Anomaly_v1.0.0"   # name and version of the model: models/<model_name>/Serving_model/ (config.pbtxt, 1/model.onnx); also the name in config.pbtxt
-    experiment: "latest"      # which run to export: the name of a run folder next to this config.yaml, or latest = the newest one
-    epoch: 50                 # which checkpoint: <experiment>/checkpoints/epoch_<epoch>.pt (run.sh --export --checkpoint FILE overrides experiment and epoch)
+    models_dir: "/jidoka/simulations/jdisk3/jt.cust.anomaly_jade_v3/models"
+    model_name: "Anomaly_v1.0.0"
+    experiment: "latest"
+    epoch: 50
