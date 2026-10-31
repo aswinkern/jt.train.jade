@@ -72,7 +72,15 @@ def main():
     if a.checkpoint is None:                                   # export.experiment + export.epoch of the config, next to the config file
         if not ex.get("experiment") or ex.get("epoch") is None:
             raise SystemExit("[Export] give --checkpoint, or set export.experiment and export.epoch in %s" % a.config)
-        ck_dir = os.path.join(os.path.dirname(os.path.abspath(a.config)), str(ex["experiment"]), "checkpoints")
+        base = os.path.dirname(os.path.abspath(a.config))
+        experiment = str(ex["experiment"])
+        if experiment == "latest":                                 # the newest run folder next to the config that has checkpoints
+            runs = [d for d in glob.glob(os.path.join(base, "*")) if glob.glob(os.path.join(d, "checkpoints", "epoch_*.pt"))]
+            if not runs:
+                raise SystemExit("[Export] export.experiment is latest, but no run folder with checkpoints/ is next to %s" % a.config)
+            experiment = os.path.basename(max(runs, key=os.path.getmtime))
+            print("[Export] latest run folder: %s" % experiment)
+        ck_dir = os.path.join(base, experiment, "checkpoints")
         a.checkpoint = os.path.join(ck_dir, "epoch_%s.pt" % ex["epoch"])
         if not os.path.isfile(a.checkpoint):
             have = sorted((os.path.basename(f) for f in glob.glob(os.path.join(ck_dir, "epoch_*.pt"))), key=lambda n: int(re.findall(r"\d+", n)[0]))

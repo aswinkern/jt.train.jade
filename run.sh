@@ -4,12 +4,13 @@
 #
 #   Copy run.sh and config.yaml into a sim folder, open a terminal there and run ./run.sh
 #   It opens the docker container itself. The code is NOT copied: code_dir in config.yaml says where it is.
-#   Everything it saves (exp_N/ ...) goes into the folder you run it from, as you (never root), with group-writable permissions.
+#   Everything it saves (jade_<data>_<date>_<time>/ ...) goes into the folder you run it from, as you (never root), with group-writable permissions.
 #
 #   ./run.sh                          train. Data folder = data_dir of config.yaml, it holds images/ (OK pictures, used for training)
 #                                     and NG/ (NG pictures, only shown in TensorBoard, never trained on). A missing folder is created and
 #                                     you are told where to drop the pictures; with no OK picture it stops before training.
-#                                     Each run gets its own folder ./exp_N (never overwrites): config.yaml, checkpoints/, tensorboard/, run.log
+#                                     Each run gets its own folder, named model + data folder + date and time, e.g. ./jade_data_2_20261031_114205
+#                                     (never overwrites): config.yaml, checkpoints/, tensorboard/, run.log
 #                                     TensorBoard starts with the training, its address is printed (the port is free-picked from 6001).
 #   ./run.sh --infer <folder> --checkpoint <epoch_N.pt> --out <folder>   [--settings <config.yaml>] [--limit N] [--batch N] [--redo]
 #                                     the trained model on any folder of pictures (sub-folders too). Writes to --out: raw/ (model output, no
@@ -31,7 +32,7 @@
 #                                     (the export prints them, ready to paste), so they change without a new export. It checks the ONNX against PyTorch on OK
 #                                     pictures. An existing model of that name is never overwritten: use a new export.model_name (version), or --overwrite.
 #                                     --max_batch is the largest batch, max_batch_size of config.pbtxt (default 16).
-#   ./run.sh --pretrain | --calibrate | --analyse [--config exp_N/config.yaml]    the other steps of the original pipeline
+#   ./run.sh --pretrain | --calibrate | --analyse [--config <run folder>/config.yaml]    the other steps of the original pipeline
 #
 #   --config <file>   default config.yaml in this folder          --gpu N   default gpu_id of the config (0 or 1)
 #   Paths on the command line may be host paths (/mnt/jdisk3/...) or /jidoka/... paths. Paths inside config.yaml are /jidoka/... paths.
@@ -129,7 +130,8 @@ if [ "$USE_DOCKER" = true ] && [ ! -f /.dockerenv ]; then
     TTY=-i; [ -t 0 ] && [ -t 1 ] && TTY=-it
 
     # Run as you (files are never root-owned); umask 0002 = group-writable like the files you make yourself
-    docker run --gpus "\"device=$GPU\"" $TTY --rm \
+    RUN_STAMP=$(date +%Y%m%d_%H%M%S)                  # the time on this machine, used in the name of the run folder
+    docker run --gpus "\"device=$GPU\"" $TTY --rm -e RUN_STAMP="$RUN_STAMP" \
         --name "$CONTAINER_NAME" \
         --user "$(id -u):$(id -g)" \
         --shm-size=8g \
@@ -170,11 +172,11 @@ case "$CMD" in
     fi
     [ "$NNG" = 0 ] && echo "[Run] Note: NG/ is empty, TensorBoard will show only OK pictures."
     OUTDIR=$(pwd)
-    n=1; while [ -e "$OUTDIR/exp_$n" ]; do n=$((n+1)); done
-    EXP=$OUTDIR/exp_$n; mkdir -p "$EXP"
+    EXP=$OUTDIR/jade_$(basename "$DD")_${RUN_STAMP:-$(date +%Y%m%d_%H%M%S)}          # model + data folder + date and time: unique, and sorts by time
+    mkdir -p "$EXP"
     sed "s#@EXP@#$EXP#g" "$CONFIG" > "$EXP/config.yaml"
     $TB --logdir "$OUTDIR" --host 0.0.0.0 --port 6006 &> /tmp/tensorboard.log &
-    echo "[Run] TensorBoard: http://localhost:${TB_HOST_PORT:-6006}  (runs: $OUTDIR/exp_N/tensorboard)"
+    echo "[Run] TensorBoard: http://localhost:${TB_HOST_PORT:-6006}  (runs: $OUTDIR/jade_*/tensorboard)"
     echo "[Run] output folder: $EXP"
     $PY -u "$CODE_DIR/training/train.py" -c "$EXP/config.yaml" 2>&1 | grep --line-buffered -v -E "$FILTER" | grep --line-buffered -v -E "^\s*$|Batch \[[1-9]" | tee "$EXP/run.log"
     ;;
