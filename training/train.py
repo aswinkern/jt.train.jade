@@ -107,7 +107,8 @@ def _log_eval_images(jade, config_dict, device, writer, epoch):
     """
     jade.eval()
 
-    image_size = tuple(config_dict["data"]["image_size"])
+    image_size = tuple(config_dict["data"]["image_size"])          # (height, width), like everywhere else
+    size_wh = (image_size[1], image_size[0])                          # cv2.resize and DataHandler.preprocess_image want (width, height)
     extensions = config_dict["data"]["image_extensions"]
     max_images = 5
 
@@ -135,7 +136,7 @@ def _log_eval_images(jade, config_dict, device, writer, epoch):
         raw_img = cv2.imread(image_path)
         if raw_img is None:
             continue
-        tensor    = dh.DataHandler.preprocess_image(raw_img, image_size).to(device)
+        tensor    = dh.DataHandler.preprocess_image(raw_img, size_wh).to(device)
         error_map = jade.get_error_map(tensor)[0]
         raw_imgs.append(raw_img)
         error_maps.append(error_map)
@@ -157,7 +158,7 @@ def _log_eval_images(jade, config_dict, device, writer, epoch):
         normalized    = np.clip(error_map / global_p99, 0, 1) if global_p99 > 0 else np.zeros_like(error_map)
         heatmap_uint8 = (normalized * 255).astype(np.uint8)
 
-        raw_resized   = cv2.resize(raw_img, image_size)
+        raw_resized   = cv2.resize(raw_img, size_wh)
         heatmap_color = cv2.applyColorMap(heatmap_uint8, cv2.COLORMAP_JET)
         overlayed     = cv2.addWeighted(raw_resized, 0.6, heatmap_color, 0.4, 0)
         overlayed     = cv2.cvtColor(overlayed, cv2.COLOR_BGR2RGB)
