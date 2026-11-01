@@ -110,24 +110,43 @@ def colour_value(d_px, colour_max, thr, floor=0.0):
     return value
 
 
-def picture(path, error_map, colour_max, thr, floor, size_hw):
-    """The picture that is saved: original | original + heat map."""
+def visual_mode(model_cfg):
+    """model.visualisation: "heatmap" (default) or "boxes"."""
+    mode = model_cfg.get("visualisation") or "heatmap"
+    if mode not in ("heatmap", "boxes"):
+        raise SystemExit('[Result] model.visualisation must be "heatmap" or "boxes", got: %s' % mode)
+    print("[Result] visualisation = %s" % mode)
+    return mode
+
+
+def picture(path, error_map, colour_max, thr, floor, size_hw, raw=None, mode="heatmap"):
+    """The picture that is saved: original | original + heat map, or (mode "boxes") original | original with the prediction boxes.
+    raw = the picture already read (BGR), else it is read from path."""
+    from tools.boxes import boxes_from_value, draw_boxes
     H, W = size_hw
-    base = cv2.resize(cv2.imread(path), (W, H))
+    base = cv2.resize(cv2.imread(path) if raw is None else raw, (W, H))
     value = colour_value(error_map, colour_max, thr, floor)
+    if mode == "boxes":
+        return np.concatenate([base, draw_boxes(base.copy(), boxes_from_value(value, error_map, thr, (H, W)))], axis=1)
     heat = cv2.applyColorMap((value * 255).astype(np.uint8), cv2.COLORMAP_JET)
     return np.concatenate([base, cv2.addWeighted(base, 0.6, heat, 0.4, 0)], axis=1)
 
 
-def save_results(maps, root, out_dir, colour_max, thr, floor, size_hw):
-    """out_dir/scores.csv and out_dir/pictures/ (same sub-folders as root) for these maps. Returns the rows (image, score, p99)."""
+def save_results(maps, root, out_dir, colour_max, thr, floor, size_hw, mode="heatmap"):
+    """out_dir/scores.csv, out_dir/pictures/ and out_dir/boxes/ (prediction boxes as json, see tools/boxes.py), same sub-folders as root,
+    for these maps. Returns the rows (image, score, p99)."""
+    from tools.boxes import boxes_from_value, write_boxes_json
+    settings = {"heatmap_scaling_factor": colour_max, "heatmap_floor": floor, "pixelwise_threshold": thr}
     rows = []
     for p, m in maps.items():
         rel = os.path.relpath(p, root)
+        raw = cv2.imread(p)
         rows.append((rel, float(m.max()), float(np.percentile(m, 99))))
         dst = os.path.join(out_dir, "pictures", os.path.splitext(rel)[0] + ".png")
         os.makedirs(os.path.dirname(dst), exist_ok=True)
-        cv2.imwrite(dst, picture(p, m, colour_max, thr, floor, size_hw))
+        cv2.imwrite(dst, picture(p, m, colour_max, thr, floor, size_hw, raw, mode))
+        boxes = boxes_from_value(colour_value(m, colour_max, thr, floor), m, thr, raw.shape[:2])
+        write_boxes_json(out_dir, rel, raw.shape[:2], m.max(), boxes, settings)
     rows.sort(key=lambda r: -r[1])                                 # highest score first
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, "scores.csv"), "w") as f:

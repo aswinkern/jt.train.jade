@@ -1,8 +1,8 @@
 """
 PatchCore on ANY folder of pictures (sub-folders are searched too), called by run.sh --infer.
 
-Writes to --out: scores.csv (score_max = the largest error of the picture, score_p99) and pictures/ [ original | original + heat map ]
-with the same sub-folders as the input. The memory bank comes from --checkpoint, the model definition from the config of its run.
+Writes to --out: scores.csv (score_max = the largest error of the picture, score_p99), pictures/ [ original | original + heat map ] and
+boxes/ (the prediction boxes of every picture as json, see tools/boxes.py), with the same sub-folders as the input. The memory bank comes from --checkpoint, the model definition from the config of its run.
 The colours (model.heatmap_scaling_factor, model.heatmap_floor, model.pixelwise_threshold) come from --settings (else the run's config); see common.py.
 """
 import os
@@ -14,7 +14,9 @@ import numpy as np
 import torch
 import yaml
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)                                          # patchcore/common.py and patchcore/model.py
+sys.path.append(os.path.dirname(HERE))                            # the repo root: tools/
 import common                           # noqa: E402
 from model import PatchCore             # noqa: E402
 
@@ -22,7 +24,7 @@ from model import PatchCore             # noqa: E402
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("-c", "--config", required=True, help="config of the run that made the checkpoint")
-    ap.add_argument("--settings", default=None, help="config whose heatmap_scaling_factor and pixelwise_threshold are used")
+    ap.add_argument("--settings", default=None, help="config whose heatmap_scaling_factor, heatmap_floor, pixelwise_threshold and visualisation are used")
     ap.add_argument("--checkpoint", required=True)
     ap.add_argument("--data", required=True, help="folder of pictures (searched recursively)")
     ap.add_argument("-o", "--out", required=True)
@@ -35,7 +37,7 @@ def main():
     src = a.config
     if a.settings:
         st = yaml.safe_load(open(a.settings))
-        for key in ("heatmap_scaling_factor", "heatmap_floor", "pixelwise_threshold"):
+        for key in ("heatmap_scaling_factor", "heatmap_floor", "pixelwise_threshold", "visualisation"):
             if key in (st.get("model") or {}):
                 cfg["model"][key] = st["model"][key]
             else:
@@ -64,7 +66,8 @@ def main():
     maps = common.error_maps(pc, paths, size, a.batch, cfg["data"]["num_workers"], device)
     colour_max, thr, floor = common.colour_scale(maps, cfg["model"], src)
     print("[Result] error over all pixels of these pictures: half of them below %.3f | 90%% below %.3f | 99%% below %.3f" % tuple(common.global_p99(maps.values(), q) for q in (0.5, 0.9, 0.99)))
-    rows = common.save_results(maps, a.data, a.out, colour_max, thr, floor, size)
+    mode = common.visual_mode(cfg["model"])
+    rows = common.save_results(maps, a.data, a.out, colour_max, thr, floor, size, mode)
     v = np.array([r[1] for r in rows])
     print("[Infer] score (largest error of a picture) over %d pictures: median %.3f | p95 %.3f | max %.3f" % (len(v), np.median(v), np.percentile(v, 95), v.max()))
     print("[Infer] 10 highest-scoring pictures:")

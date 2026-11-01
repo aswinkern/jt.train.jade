@@ -112,9 +112,10 @@ def main():
     else:
         print("[Result] output.calibration_pictures is 0: heatmap_floor and heatmap_scaling_factor are taken from the config as they are")
     colour_max, thr, floor = common.colour_scale({**maps_ok, **maps_ng}, cfg["model"], a.config)
+    mode = common.visual_mode(cfg["model"])
     res = out["results_dir"]
-    rows_ok = common.save_results(maps_ok, os.path.join(root, "images"), os.path.join(res, "OK"), colour_max, thr, floor, size)
-    rows_ng = common.save_results(maps_ng, os.path.join(root, "NG"), os.path.join(res, "NG"), colour_max, thr, floor, size) if maps_ng else []
+    rows_ok = common.save_results(maps_ok, os.path.join(root, "images"), os.path.join(res, "OK"), colour_max, thr, floor, size, mode)
+    rows_ng = common.save_results(maps_ng, os.path.join(root, "NG"), os.path.join(res, "NG"), colour_max, thr, floor, size, mode) if maps_ng else []
 
     def stats(rows):
         v = np.array([r[1] for r in rows])
@@ -128,7 +129,7 @@ def main():
         w = SummaryWriter(out["tensorboard_dir"])
         for tag, maps, n in (("OK", maps_ok, 5), ("NG", maps_ng, 10)):
             for i, (p, m) in enumerate(list(maps.items())[:n]):
-                img = cv2.cvtColor(common.picture(p, m, colour_max, thr, floor, size), cv2.COLOR_BGR2RGB)
+                img = cv2.cvtColor(common.picture(p, m, colour_max, thr, floor, size, None, mode), cv2.COLOR_BGR2RGB)
                 w.add_image("%s/image_%d" % (tag, i), torch.from_numpy(img).permute(2, 0, 1).float() / 255.0, 0)
         w.close()
     except Exception as e:

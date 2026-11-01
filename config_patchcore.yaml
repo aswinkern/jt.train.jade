@@ -29,6 +29,7 @@ model:
 
     blur_sigma: 4
     pixelwise_threshold: 0
+    visualisation: "heatmap"
 
 output:
     checkpoint_dir: "@EXP@/checkpoints"

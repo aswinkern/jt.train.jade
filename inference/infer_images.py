@@ -37,6 +37,7 @@ import torch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))        # JADE_v3, so that model/, data/ ... can be imported
 from model import model as md                      # noqa: E402
 from inference.evaluate import error_maps_batch, spread   # noqa: E402
+from tools.boxes import boxes_from_value, draw_boxes, write_boxes_json   # noqa: E402
 from inference.postprocess import colour_value   # noqa: E402  (shared with the Triton client)
 
 
@@ -140,7 +141,7 @@ def main():
     src = a.config
     if a.settings:
         st = yaml.load(open(a.settings), Loader=yaml.FullLoader)
-        for key in ("layer_weights", "featurewise_threshold", "heatmap_scaling_factor", "pixelwise_threshold"):
+        for key in ("layer_weights", "featurewise_threshold", "heatmap_scaling_factor", "pixelwise_threshold", "visualisation"):
             if key in (st.get("model") or {}):
                 cfg["model"][key] = st["model"][key]
             else:
@@ -247,15 +248,24 @@ def main():
         print("[Infer] no pixelwise_threshold in %s: nothing is hidden" % src)
     else:
         print("[Infer] pixelwise_threshold = %g from %s: pixels at or below %g (of 100) are drawn dark blue" % (thr, src, thr))
+    mode = cfg["model"].get("visualisation") or "heatmap"            # "heatmap" (default) or "boxes": what the saved pictures show
+    if mode not in ("heatmap", "boxes"):
+        raise SystemExit('[Infer] model.visualisation must be "heatmap" or "boxes", got: %s' % mode)
+    print("[Infer] visualisation = %s" % mode)
     pic_dir = os.path.join(a.out, "pictures")
     byname = {r[0]: r for r in rows}
     for rel in chosen:
         p = os.path.join(a.data, rel)
-        base = cv2.resize(cv2.imread(p), (W, H))
+        raw = cv2.imread(p)
+        base = cv2.resize(raw, (W, H))
         d = cv2.resize(maps[p], (W, H), interpolation=cv2.INTER_LINEAR)
         value = colour_value(d, colour_max, thr)                          # 0..1: 0 = dark blue, 1 = dark red
+        write_boxes_json(a.out, rel, raw.shape[:2], byname[rel][2], boxes_from_value(value, d, thr, raw.shape[:2]),    # prediction boxes: tools/boxes.py
+                         {"heatmap_scaling_factor": colour_max, "pixelwise_threshold": thr})
         heat = cv2.applyColorMap((value * 255).astype(np.uint8), cv2.COLORMAP_JET)
         img = np.concatenate([base, cv2.addWeighted(base, 0.6, heat, 0.4, 0)], axis=1)      # the TensorBoard picture: original | original + heat map
+        if mode == "boxes":                                                                 # original | original with the prediction boxes
+            img = np.concatenate([base, draw_boxes(base.copy(), boxes_from_value(value, d, thr, (H, W)))], axis=1)
         ph, pw = H // grid[0], W // grid[1]
         grid_value = value[:grid[0] * ph, :grid[1] * pw].reshape(grid[0], ph, grid[1], pw).mean(axis=(1, 3)) * 100.0   # the same colour value per 14 x 14 square, 0..100
         post = {"image": rel, "grid": list(grid), "layers": layers,

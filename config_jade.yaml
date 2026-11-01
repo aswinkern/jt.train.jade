@@ -36,6 +36,7 @@ model:
     layer_weights: [1.0, 1.0, 1.0, 1.0]
     featurewise_threshold: 0.6
     pixelwise_threshold: 0
+    visualisation: "heatmap"
 
 training:
     num_epochs: 50

@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Detection analytics</title>
+<style>
+:root{
+  --bg:#f6f7f9; --surface:#ffffff; --text:#1c2430; --muted:#5b6675; --line:#d9dee5; --grid:#e8ebf0;
+  --okay:#0072B2; --defect:#E69F00; --label:#009E73; --pred:#D55E00; --accent:#0072B2;
+  --warn-bg:#fff4e0; --shadow:0 1px 2px rgba(20,30,50,.08);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#10151c; --surface:#18202a; --text:#e6eaf0; --muted:#9aa6b6; --line:#2c3746; --grid:#243040;
+    --okay:#56B4E9; --defect:#F0B53D; --label:#2FC79A; --pred:#FF8A47; --accent:#56B4E9; --warn-bg:#2a2314; --shadow:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#10151c; --surface:#18202a; --text:#e6eaf0; --muted:#9aa6b6; --line:#2c3746; --grid:#243040;
+  --okay:#56B4E9; --defect:#F0B53D; --label:#2FC79A; --pred:#FF8A47; --accent:#56B4E9; --warn-bg:#2a2314; --shadow:none;
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+html{background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1320px;margin:0 auto;padding:0 16px 48px}
+header{padding:22px 0 8px}
+h1{margin:0;font-size:24px;font-weight:650}
+h2{margin:0 0 4px;font-size:17px;font-weight:650}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.hint{margin:0 0 12px;color:var(--muted);font-size:13px}
+.controls{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);padding:10px 0;margin-bottom:16px}
+.controls .row{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center}
+.controls label{font-weight:600}
+.controls input[type=range]{width:min(420px,70vw);vertical-align:middle;accent-color:var(--accent)}
+.controls output{display:inline-block;min-width:4.5em;font-variant-numeric:tabular-nums;font-weight:650}
+button,select,input[type=search]{font:inherit;color:var(--text);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+button{cursor:pointer}
+button:hover{border-color:var(--accent)}
+button:focus-visible,select:focus-visible,input:focus-visible,.card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:var(--accent)}
+.presets{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;box-shadow:var(--shadow)}
+.kpi .t{font-size:13px;color:var(--muted)}
+.kpi .v{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2}
+.kpi .s{font-size:13px;color:var(--muted)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;box-shadow:var(--shadow);margin-bottom:16px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:16px;margin-bottom:16px}
+.grid2 .panel{margin-bottom:0}
+svg text{fill:var(--muted);font:12px system-ui,sans-serif}
+svg .ax{stroke:var(--line);stroke-width:1}
+svg .gl{stroke:var(--grid);stroke-width:1}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:6px 0 0;font-size:13px;color:var(--muted)}
+.sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+table{border-collapse:collapse;width:100%}
+th,td{padding:6px 10px;text-align:left;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+th{font-size:13px;color:var(--muted);font-weight:600;white-space:nowrap}
+th.sortable{cursor:pointer;user-select:none}
+th.sortable:hover{color:var(--text)}
+tbody tr.click{cursor:pointer}
+tbody tr.click:hover{background:var(--grid)}
+td.num,th.num{text-align:right}
+.conf td,.conf th{text-align:right}
+.conf td:first-child,.conf th:first-child{text-align:left}
+.bar{display:grid;grid-template-columns:110px 1fr 160px;gap:10px;align-items:center;margin:7px 0}
+.bar .track{height:16px;background:var(--grid);border-radius:4px;overflow:hidden}
+.bar .fill{height:100%;background:var(--label)}
+.bar .nm{font-weight:600}
+.bar .ct{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.filters{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;margin-bottom:12px}
+.gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden;cursor:pointer;display:block;text-align:left;padding:0;color:inherit}
+.card:hover{border-color:var(--accent)}
+.card .cap{padding:6px 10px 8px;font-size:12.5px}
+.card .cap .nm{font-weight:600;word-break:break-all}
+.thumb{position:relative;background:#000;line-height:0}
+.thumb img,.thumb svg{width:100%;height:auto;display:block}
+.thumb svg{position:absolute;inset:0;height:100%}
+.badge{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:0 8px;font-size:12px;font-weight:600;margin-right:6px;background:var(--bg)}
+.more{display:block;margin:14px auto 0}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--text);padding:0;width:min(1180px,96vw);max-height:94vh}
+dialog::backdrop{background:rgba(0,0,0,.55)}
+.dlg{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:0}
+.dlg .main{padding:12px;background:#000}
+.dlg .side{padding:14px;overflow:auto;max-height:80vh}
+.dlg .bar2{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 12px;border-bottom:1px solid var(--line)}
+.dlg .bar2 strong{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dlg .bar2 span{flex:none;white-space:nowrap}
+.dlg ul{margin:6px 0;padding-left:18px}
+.tip{position:fixed;pointer-events:none;background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12.5px;box-shadow:0 4px 14px rgba(0,0,0,.25);z-index:20;display:none;white-space:nowrap}
+.how{background:var(--warn-bg);border-radius:10px;padding:10px 14px;font-size:13.5px;margin-bottom:16px}
+.how b{font-weight:650}
+@media (max-width:820px){.dlg{grid-template-columns:1fr}.bar{grid-template-columns:90px 1fr}.bar .ct{grid-column:1 / -1}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1 id="title">Detection analytics</h1>
+  <p class="muted small" id="sub"></p>
+</header>
+
+<div class="controls" role="group" aria-label="Score cutoff">
+  <div class="row">
+    <label for="cut">Score cutoff</label>
+    <input type="range" id="cut" step="0.001">
+    <output id="cutv" for="cut"></output>
+    <span class="presets" id="presets" aria-label="Presets"></span>
+    <label class="small">Match rule <select id="rule" aria-label="Match rule">
+      <option value="overlap">label touches the box (any overlap)</option>
+      <option value="half">at least half of the label inside the box</option>
+      <option value="centre">centre of the label inside the box</option></select></label>
+    <span class="muted small">A picture is flagged when its score is at or above the cutoff. Boxes below the cutoff are ignored.</span>
+  </div>
+</div>
+
+<section class="how" id="how"></section>
+
+<section class="cards" id="kpis" aria-live="polite"></section>
+
+<section class="grid2">
+  <div class="panel"><h2>Score of the pictures</h2>
+    <p class="hint">Share of each group at every score. A good model keeps the two groups apart. The line is the cutoff.</p>
+    <div id="histo"></div><div class="legend" id="histo-leg"></div></div>
+  <div class="panel"><h2>Trade-off</h2>
+    <p class="hint">Every cutoff is a point: how many okay pictures are flagged (false alarms) against how many defect pictures are caught.</p>
+    <div id="roc"></div><div class="legend"><span><span class="sw" style="background:var(--pred)"></span>current cutoff</span></div></div>
+</section>
+
+<section class="grid2">
+  <div class="panel"><h2>Pictures at this cutoff</h2>
+    <p class="hint">Rows are the true group (from the labels), columns what the model says.</p>
+    <table class="conf" id="conf"></table></div>
+  <div class="panel"><h2>Labelled defects found, by class</h2>
+    <p class="hint">A labelled box is found when it lies in the region of a predicted box that passes the cutoff (match rule above).</p>
+    <div id="classes"></div></div>
+</section>
+
+<section class="panel" id="browser">
+  <h2>Pictures</h2>
+  <p class="hint">Green = labelled defect. Dashed grey = defect_1 to defect_4 labels. Solid orange = correct predicted box (a labelled defect is in its region). Dotted orange = wrong predicted box (no labelled defect in it).</p>
+  <div class="tabs" role="tablist"><button id="tab-gal" aria-pressed="true">Gallery</button><button id="tab-tab" aria-pressed="false">Table</button></div>
+  <div class="filters">
+    <span id="chips"></span>
+    <label class="small">Class <select id="clsSel"></select></label>
+    <label class="small">Sort <select id="sortSel">
+      <option value="score_desc">Score, high to low</option><option value="score_asc">Score, low to high</option>
+      <option value="name">Name</option><option value="missed">Most labelled defects missed</option></select></label>
+    <input type="search" id="q" placeholder="Search name" aria-label="Search by name">
+    <span class="muted small" id="count"></span>
+  </div>
+  <div id="gallery" class="gal"></div>
+  <div id="tablewrap" hidden></div>
+  <button class="more" id="more" hidden>Show more</button>
+</section>
+</div>
+
+<dialog id="viewer" aria-label="Picture viewer">
+  <div class="bar2"><strong id="v-title" class="small" title=""></strong>
+    <span><button id="v-prev" aria-label="Previous picture">&larr;</button> <button id="v-next" aria-label="Next picture">&rarr;</button> <button id="v-close">Close</button></span></div>
+  <div class="dlg">
+    <div class="main"><div class="thumb" id="v-img"></div></div>
+    <div class="side" id="v-side"></div>
+  </div>
+</dialog>
+<div class="tip" id="tip"></div>
+
+<script id="data" type="application/json">/*__DATA__*/</script>
+
+<script id="logic">
+/* ---------- logic: no DOM ---------- */
+const Logic = (function () {
+  function inter(a, b) {
+    const w = Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1), h = Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1);
+    return (w > 0 && h > 0) ? w * h : 0;
+  }
+  const area = b => Math.max(0, b.x2 - b.x1) * Math.max(0, b.y2 - b.y1);
+
+  function prepare(D) {
+    const okCls = new Set(D.meta.okay_classes);
+    D.pictures.forEach((p, i) => {
+      p.i = i;
+      p.defLabels = p.labels.filter(l => !okCls.has(l.c));
+      p.markLabels = p.labels.filter(l => okCls.has(l.c));
+    });
+    D.okayScores = D.pictures.filter(p => p.group === 'okay').map(p => p.score).sort((a, b) => b - a);
+    D.defectScores = D.pictures.filter(p => p.group === 'defect').map(p => p.score).sort((a, b) => b - a);
+    D.classes = Array.from(new Set([].concat(...D.pictures.map(p => p.defLabels.map(l => l.c))))).sort();
+    return D;
+  }
+
+  // is the labelled box l "in the region" of the predicted box b?
+  function matches(l, b, rule) {
+    if (rule === 'centre') { const cx = (l.x1 + l.x2) / 2, cy = (l.y1 + l.y2) / 2; return cx >= b.x1 && cx <= b.x2 && cy >= b.y1 && cy <= b.y2; }
+    const i = inter(l, b);
+    if (rule === 'half') { const a = area(l); return a > 0 && i / a >= 0.5; }
+    return i > 0;                                                   // 'overlap': the label touches the box
+  }
+
+  // everything that depends on the cutoff and the match rule
+  // a predicted box is correct (ok) when a labelled defect is in its region; a labelled defect is found when a predicted box has it in its region
+  function evaluate(D, cut, rule) {
+    rule = rule || 'overlap';
+    const m = { cut, rule, nOk: 0, nDef: 0, caught: 0, caughtRight: 0, falseAlarm: 0, labTot: 0, labFound: 0, boxes: 0, boxesHit: 0, byClass: {}, per: [] };
+    D.classes.forEach(c => { m.byClass[c] = { total: 0, found: 0 }; });
+    D.pictures.forEach(p => {
+      const active = p.boxes.filter(b => b.score >= cut).map(b => Object.assign({}, b, { ok: p.defLabels.some(l => matches(l, b, rule)) }));
+      const flagged = p.score >= cut;
+      let found = 0;
+      const foundFlags = p.defLabels.map(l => {
+        const ok = active.some(b => matches(l, b, rule));
+        m.byClass[l.c].total++; if (ok) { m.byClass[l.c].found++; found++; }
+        return ok;
+      });
+      const hit = active.filter(b => b.ok).length;
+      m.boxes += active.length; m.boxesHit += hit;
+      m.labTot += p.defLabels.length; m.labFound += found;
+      let status;
+      if (p.group === 'defect') {
+        m.nDef++;
+        if (flagged) { m.caught++; if (hit > 0) { m.caughtRight++; status = 'caught'; } else status = 'wrong'; } else status = 'missed';
+      } else { m.nOk++; if (flagged) { m.falseAlarm++; status = 'false'; } else status = 'correct'; }
+      m.per.push({ p, active, flagged, found, foundFlags, hit, status });
+    });
+    return m;
+  }
+
+  // the trade-off curve over every cutoff
+  function curve(D) {
+    const all = D.pictures.map(p => p.score).sort((a, b) => a - b);
+    const uniq = all.filter((v, i) => i === 0 || v !== all[i - 1]);
+    const nOk = D.okayScores.length, nDef = D.defectScores.length;
+    const pts = uniq.map(c => ({
+      cut: c,
+      fa: D.okayScores.filter(s => s >= c).length / Math.max(1, nOk),
+      tp: D.defectScores.filter(s => s >= c).length / Math.max(1, nDef)
+    }));
+    pts.push({ cut: all[all.length - 1] + 1e-6, fa: 0, tp: 0 });
+    return pts;
+  }
+  function auc(pts) {                      // chance that a random defect picture scores above a random okay picture
+    const s = pts.slice().sort((a, b) => a.fa - b.fa || a.tp - b.tp);
+    let a = 0, px = 0, py = 0;
+    s.forEach(q => { a += (q.fa - px) * (q.tp + py) / 2; px = q.fa; py = q.tp; });
+    a += (1 - px) * (1 + py) / 2;
+    return a;
+  }
+  // cutoff at which about `pct` percent of the okay pictures are flagged
+  function cutForFalseAlarm(D, pct) {
+    const n = D.okayScores.length, k = Math.min(n - 1, Math.floor(n * pct / 100));
+    return D.okayScores[k] + 1e-6;
+  }
+  function histogram(D, nb) {
+    const all = D.pictures.map(p => p.score);
+    const lo = Math.min.apply(null, all), hi = Math.max.apply(null, all), w = (hi - lo) / nb || 1;
+    const mk = () => new Array(nb).fill(0);
+    const ok = mk(), df = mk();
+    D.pictures.forEach(p => { const i = Math.min(nb - 1, Math.floor((p.score - lo) / w)); (p.group === 'okay' ? ok : df)[i]++; });
+    return { lo, hi, w, ok, df, nOk: D.okayScores.length, nDef: D.defectScores.length };
+  }
+  return { inter, area, matches, prepare, evaluate, curve, auc, cutForFalseAlarm, histogram };
+})();
+if (typeof module !== 'undefined') module.exports = Logic;
+</script>
+
+<script id="ui">
+/* ---------- page ---------- */
+(function () {
+  if (typeof document === 'undefined') return;
+  const D = Logic.prepare(JSON.parse(document.getElementById('data').textContent));
+  const $ = id => document.getElementById(id);
+  const fmt = (v, d) => v.toFixed(d === undefined ? 2 : d);
+  const pct = (a, b) => b ? (100 * a / b).toFixed(1) + '%' : '-';
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const STATUS = { caught: ['✓', 'Caught'], wrong: ['⚠', 'Caught, wrong place'], missed: ['✗', 'Missed'], false: ['!', 'False alarm'], correct: ['✓', 'Correct'] };
+  const state = { cut: 0, rule: 'overlap', filter: 'all', cls: '', sort: 'score_desc', q: '', view: 'gallery', shown: 48, open: -1, tsort: ['score', -1] };
+  let M = null, list = [];
+  const curve = Logic.curve(D), hist = Logic.histogram(D, 32), AUC = Logic.auc(curve);
+  const scores = D.pictures.map(p => p.score);
+  const lo = Math.min.apply(null, scores), hi = Math.max.apply(null, scores);
+
+  $('title').textContent = D.meta.title;
+  $('sub').textContent = D.meta.subtitle;
+  document.title = D.meta.title;
+  $('how').innerHTML = '<b>How to read this page.</b> The <b>score</b> of a picture is the largest error the model found in it. ' +
+    'Pictures in the <b>defect</b> folder are the ones that should be flagged, pictures in the <b>okay</b> folder should not. ' +
+    'Move the cutoff: a lower cutoff catches more defects and gives more false alarms. ' +
+    'A <b>predicted box is correct</b> when a labelled defect (not defect_1 to defect_4) lies in its region, and a <b>labelled defect is found</b> when a predicted box has it in its region; the match rule above says what "in its region" means. ' +
+    '<span class="muted">Chance that a random defect picture scores above a random okay picture: <b>' + (100 * AUC).toFixed(0) + '%</b> (50% = no better than a coin, 100% = perfect).</span>';
+
+  /* controls */
+  const cut = $('cut');
+  cut.min = (Math.floor(lo * 1000) / 1000).toFixed(3); cut.max = (Math.ceil(hi * 1000) / 1000).toFixed(3);
+  [1, 5, 10].forEach(p => {
+    const b = document.createElement('button'); b.textContent = p + '% false alarms'; b.dataset.p = p;
+    b.title = 'Set the cutoff where about ' + p + '% of the okay pictures are flagged';
+    b.addEventListener('click', () => setCut(Logic.cutForFalseAlarm(D, p)));
+    $('presets').appendChild(b);
+  });
+  cut.addEventListener('input', () => setCut(parseFloat(cut.value), true));
+  $('rule').addEventListener('change', e => { state.rule = e.target.value; schedule(); });
+  function setCut(v, fromSlider) {
+    state.cut = v; if (!fromSlider) cut.value = v;
+    $('cutv').textContent = fmt(v, 3);
+    schedule();
+  }
+  let pending = false;
+  function schedule() { if (!pending) { pending = true; requestAnimationFrame(() => { pending = false; renderAll(); }); } }
+
+  /* tooltip */
+  const tip = $('tip');
+  function showTip(e, html) { tip.innerHTML = html; tip.style.display = 'block'; const r = tip.getBoundingClientRect(); tip.style.left = Math.min(innerWidth - r.width - 8, e.clientX + 14) + 'px'; tip.style.top = Math.max(8, e.clientY - r.height - 10) + 'px'; }
+  function hideTip() { tip.style.display = 'none'; }
+
+  /* charts */
+  function svgOpen(w, h, label) { return '<svg viewBox="0 0 ' + w + ' ' + h + '" width="100%" role="img" aria-label="' + esc(label) + '" style="display:block">'; }
+  function renderHisto() {
+    const W = 560, H = 270, L = 44, R = 10, T = 10, B = 40, iw = W - L - R, ih = H - T - B;
+    const pOk = hist.ok.map(v => v / hist.nOk), pDf = hist.df.map(v => v / hist.nDef);
+    const ymax = Math.max(0.05, Math.max.apply(null, pOk.concat(pDf))), y = v => T + ih - v / ymax * ih;
+    const xs = v => L + (v - hist.lo) / (hist.hi - hist.lo || 1) * iw, bw = iw / hist.ok.length;
+    let s = svgOpen(W, H, 'Histogram of picture scores for okay and defect pictures');
+    for (let i = 0; i <= 4; i++) { const v = ymax * i / 4, yy = y(v); s += '<line class="gl" x1="' + L + '" x2="' + (W - R) + '" y1="' + yy + '" y2="' + yy + '"/><text x="' + (L - 6) + '" y="' + (yy + 4) + '" text-anchor="end">' + (100 * v).toFixed(0) + '%</text>'; }
+    for (let i = 0; i < hist.ok.length; i++) {
+      const x0 = L + i * bw, a = pOk[i], d = pDf[i];
+      s += '<rect data-i="' + i + '" x="' + (x0 + 1) + '" y="' + y(a) + '" width="' + Math.max(1, bw / 2 - 1.5) + '" height="' + (T + ih - y(a)) + '" rx="2" fill="var(--okay)"/>';
+      s += '<rect data-i="' + i + '" x="' + (x0 + bw / 2 + .5) + '" y="' + y(d) + '" width="' + Math.max(1, bw / 2 - 1.5) + '" height="' + (T + ih - y(d)) + '" rx="2" fill="var(--defect)"/>';
+      s += '<rect data-i="' + i + '" class="hit" x="' + x0 + '" y="' + T + '" width="' + bw + '" height="' + ih + '" fill="transparent"/>';
+    }
+    s += '<line class="ax" x1="' + L + '" x2="' + (W - R) + '" y1="' + (T + ih) + '" y2="' + (T + ih) + '"/>';
+    for (let i = 0; i <= 5; i++) { const v = hist.lo + (hist.hi - hist.lo) * i / 5; s += '<text x="' + xs(v) + '" y="' + (H - 20) + '" text-anchor="middle">' + v.toFixed(2) + '</text>'; }
+    s += '<text x="' + (L + iw / 2) + '" y="' + (H - 3) + '" text-anchor="middle">score of the picture (largest error)</text>';
+    const cx = xs(Math.min(hist.hi, Math.max(hist.lo, state.cut)));
+    s += '<line x1="' + cx + '" x2="' + cx + '" y1="' + T + '" y2="' + (T + ih) + '" stroke="var(--pred)" stroke-width="2.5"/>';
+    $('histo').innerHTML = s + '</svg>';
+    $('histo-leg').innerHTML = '<span><span class="sw" style="background:var(--okay)"></span>okay pictures (' + hist.nOk + ')</span><span><span class="sw" style="background:var(--defect)"></span>defect pictures (' + hist.nDef + ')</span><span><span class="sw" style="background:var(--pred)"></span>cutoff</span>';
+    $('histo').querySelectorAll('.hit').forEach(r => {
+      const i = +r.dataset.i;
+      r.addEventListener('mousemove', e => showTip(e, '<b>score ' + (hist.lo + i * hist.w).toFixed(2) + ' to ' + (hist.lo + (i + 1) * hist.w).toFixed(2) + '</b><br>okay: ' + hist.ok[i] + ' pictures (' + (100 * hist.ok[i] / hist.nOk).toFixed(1) + '%)<br>defect: ' + hist.df[i] + ' pictures (' + (100 * hist.df[i] / hist.nDef).toFixed(1) + '%)'));
+      r.addEventListener('mouseleave', hideTip);
+    });
+  }
+  function renderRoc() {
+    const W = 460, H = 300, L = 48, R = 12, T = 10, B = 44, iw = W - L - R, ih = H - T - B;
+    const x = v => L + v * iw, y = v => T + ih - v * ih;
+    let s = svgOpen(W, H, 'Trade-off curve: okay pictures flagged against defect pictures caught');
+    for (let i = 0; i <= 4; i++) { const v = i / 4; s += '<line class="gl" x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '"/><text x="' + (L - 6) + '" y="' + (y(v) + 4) + '" text-anchor="end">' + (100 * v).toFixed(0) + '%</text>'; s += '<text x="' + x(v) + '" y="' + (T + ih + 16) + '" text-anchor="middle">' + (100 * v).toFixed(0) + '%</text>'; }
+    s += '<line class="ax" x1="' + L + '" x2="' + L + '" y1="' + T + '" y2="' + (T + ih) + '"/><line class="ax" x1="' + L + '" x2="' + (W - R) + '" y1="' + (T + ih) + '" y2="' + (T + ih) + '"/>';
+    s += '<line x1="' + x(0) + '" y1="' + y(0) + '" x2="' + x(1) + '" y2="' + y(1) + '" stroke="var(--line)" stroke-dasharray="4 4"/>';
+    const pts = curve.slice().sort((a, b) => a.fa - b.fa || a.tp - b.tp);
+    s += '<polyline fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" points="' + pts.map(p => x(p.fa).toFixed(1) + ',' + y(p.tp).toFixed(1)).join(' ') + '"/>';
+    s += '<text x="' + (L + iw / 2) + '" y="' + (H - 4) + '" text-anchor="middle">okay pictures flagged (false alarms)</text>';
+    s += '<text transform="translate(12 ' + (T + ih / 2) + ') rotate(-90)" text-anchor="middle">defect pictures caught</text>';
+    const fa = M.falseAlarm / Math.max(1, M.nOk), tp = M.caught / Math.max(1, M.nDef);
+    s += '<circle cx="' + x(fa) + '" cy="' + y(tp) + '" r="7" fill="var(--pred)" stroke="var(--surface)" stroke-width="2"/>';
+    s += '<rect id="roc-hit" x="' + L + '" y="' + T + '" width="' + iw + '" height="' + ih + '" fill="transparent"/>';
+    $('roc').innerHTML = s + '</svg>';
+    const hit = $('roc-hit');
+    hit.addEventListener('mousemove', e => {
+      const r = hit.getBoundingClientRect(), fx = (e.clientX - r.left) / r.width;
+      let best = pts[0]; pts.forEach(p => { if (Math.abs(p.fa - fx) < Math.abs(best.fa - fx)) best = p; });
+      showTip(e, '<b>cutoff ' + best.cut.toFixed(3) + '</b><br>false alarms ' + (100 * best.fa).toFixed(1) + '%<br>defect pictures caught ' + (100 * best.tp).toFixed(1) + '%');
+    });
+    hit.addEventListener('mouseleave', hideTip);
+    hit.addEventListener('click', e => {
+      const r = hit.getBoundingClientRect(), fx = (e.clientX - r.left) / r.width;
+      let best = pts[0]; pts.forEach(p => { if (Math.abs(p.fa - fx) < Math.abs(best.fa - fx)) best = p; });
+      setCut(best.cut);
+    });
+  }
+  function renderKpis() {
+    const cards = [
+      ['Defect pictures caught', M.caught + ' / ' + M.nDef, pct(M.caught, M.nDef) + ' of the defect pictures'],
+      ['Caught in the right place', M.caughtRight + ' / ' + M.caught, 'a predicted box has a labelled defect in its region'],
+      ['Okay pictures flagged', M.falseAlarm + ' / ' + M.nOk, pct(M.falseAlarm, M.nOk) + ' false alarms'],
+      ['Labelled defects found', M.labFound + ' / ' + M.labTot, pct(M.labFound, M.labTot) + ' of the labelled boxes'],
+      ['Predicted boxes correct', M.boxesHit + ' / ' + M.boxes, pct(M.boxesHit, M.boxes) + ' have a labelled defect in their region']
+    ];
+    $('kpis').innerHTML = cards.map(c => '<div class="kpi"><div class="t">' + c[0] + '</div><div class="v">' + c[1] + '</div><div class="s">' + c[2] + '</div></div>').join('');
+  }
+  function renderConf() {
+    const tn = M.nOk - M.falseAlarm, fn = M.nDef - M.caught;
+    $('conf').innerHTML = '<thead><tr><th></th><th class="num">flagged</th><th class="num">not flagged</th><th class="num">total</th></tr></thead><tbody>' +
+      '<tr><th>defect pictures</th><td>' + M.caught + ' caught (' + M.caughtRight + ' in the right place)</td><td>' + fn + ' missed</td><td>' + M.nDef + '</td></tr>' +
+      '<tr><th>okay pictures</th><td>' + M.falseAlarm + ' false alarms</td><td>' + tn + ' correct</td><td>' + M.nOk + '</td></tr></tbody>';
+  }
+  function renderClasses() {
+    const rows = D.classes.map(c => [c, M.byClass[c]]).sort((a, b) => b[1].total - a[1].total);
+    $('classes').innerHTML = rows.length ? rows.map(r => {
+      const f = r[1].found, t = r[1].total, w = t ? 100 * f / t : 0;
+      return '<div class="bar"><span class="nm">' + esc(r[0]) + '</span><div class="track" role="img" aria-label="' + esc(r[0]) + ': ' + f + ' of ' + t + ' found"><div class="fill" style="width:' + w + '%"></div></div><span class="ct">' + f + ' of ' + t + ' found (' + w.toFixed(0) + '%)</span></div>';
+    }).join('') : '<p class="muted">No labelled defect classes in this data.</p>';
+  }
+
+  /* picture browser */
+  const counts = () => { const c = { all: M.per.length, caught: 0, wrong: 0, missed: 0, false: 0, correct: 0 }; M.per.forEach(r => c[r.status]++); return c; };
+  function renderChips() {
+    const c = counts();
+    const defs = [['all', 'All'], ['caught', 'Caught, right place'], ['wrong', 'Caught, wrong place'], ['missed', 'Missed defects'], ['false', 'False alarms'], ['correct', 'Correct okay']];
+    $('chips').innerHTML = defs.map(d => '<button data-f="' + d[0] + '" aria-pressed="' + (state.filter === d[0]) + '">' + d[1] + ' (' + c[d[0]] + ')</button>').join(' ');
+    $('chips').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { state.filter = b.dataset.f; state.shown = 48; renderBrowser(); }));
+  }
+  function rows() {
+    let r = M.per.filter(x => (state.filter === 'all' || x.status === state.filter) &&
+      (!state.cls || x.p.defLabels.some(l => l.c === state.cls)) &&
+      (!state.q || x.p.name.toLowerCase().indexOf(state.q.toLowerCase()) >= 0));
+    const s = state.sort;
+    r.sort((a, b) => s === 'score_asc' ? a.p.score - b.p.score : s === 'name' ? a.p.name.localeCompare(b.p.name) :
+      s === 'missed' ? (b.p.defLabels.length - b.found) - (a.p.defLabels.length - a.found) || b.p.score - a.p.score : b.p.score - a.p.score);
+    return r;
+  }
+  function overlay(r, opts) {
+    const p = r.p, o = opts || { labels: true, marks: true, preds: true };
+    let s = '<svg viewBox="0 0 ' + p.w + ' ' + p.h + '" preserveAspectRatio="none" aria-hidden="true">';
+    if (o.marks) p.markLabels.forEach(l => { s += '<rect x="' + l.x1 + '" y="' + l.y1 + '" width="' + (l.x2 - l.x1) + '" height="' + (l.y2 - l.y1) + '" fill="none" stroke="#c9d1db" stroke-opacity=".8" stroke-width="1.5" stroke-dasharray="6 5" vector-effect="non-scaling-stroke"/>'; });
+    if (o.labels) p.defLabels.forEach((l, i) => { s += '<rect x="' + l.x1 + '" y="' + l.y1 + '" width="' + (l.x2 - l.x1) + '" height="' + (l.y2 - l.y1) + '" fill="none" stroke="var(--label)" stroke-width="2.5" vector-effect="non-scaling-stroke"/>'; });
+    if (o.preds) r.active.forEach(b => { s += '<rect x="' + b.x1 + '" y="' + b.y1 + '" width="' + (b.x2 - b.x1) + '" height="' + (b.y2 - b.y1) + '" fill="' + (b.ok ? 'var(--pred)' : 'none') + '" fill-opacity=".10" stroke="var(--pred)" stroke-width="2.5"' + (b.ok ? '' : ' stroke-dasharray="3 4"') + ' vector-effect="non-scaling-stroke"/>'; });
+    return s + '</svg>';
+  }
+  function card(r) {
+    const st = STATUS[r.status], p = r.p;
+    return '<button class="card" data-i="' + p.i + '"><div class="thumb"><img loading="lazy" alt="" src="' + D.images[p.img] + '">' + overlay(r) + '</div>' +
+      '<div class="cap"><div class="nm">' + esc(p.name) + '</div><span class="badge">' + st[0] + ' ' + st[1] + '</span>score ' + fmt(p.score) + ' &middot; ' + r.active.length + ' boxes' +
+      (p.defLabels.length ? ' &middot; ' + r.found + '/' + p.defLabels.length + ' labelled found' : '') + '</div></button>';
+  }
+  function renderTable() {
+    const cols = [['name', 'Picture', false], ['group', 'Group', false], ['score', 'Score', true], ['boxes', 'Boxes', true], ['lab', 'Labelled defects', true], ['found', 'Found', true], ['status', 'Result', false]];
+    const key = { name: x => x.p.name, group: x => x.p.group, score: x => x.p.score, boxes: x => x.active.length, lab: x => x.p.defLabels.length, found: x => x.found, status: x => STATUS[x.status][1] };
+    const [k, dir] = state.tsort, rr = list.slice().sort((a, b) => { const A = key[k](a), B = key[k](b); return (A < B ? -1 : A > B ? 1 : 0) * dir; });
+    let s = '<table><thead><tr>' + cols.map(c => '<th class="sortable' + (c[2] ? ' num' : '') + '" data-k="' + c[0] + '" aria-sort="' + (k === c[0] ? (dir > 0 ? 'ascending' : 'descending') : 'none') + '">' + c[1] + (k === c[0] ? (dir > 0 ? ' ▲' : ' ▼') : '') + '</th>').join('') + '</tr></thead><tbody>';
+    rr.slice(0, 400).forEach(r => { s += '<tr class="click" data-i="' + r.p.i + '"><td>' + esc(r.p.name) + '</td><td>' + r.p.group + '</td><td class="num">' + fmt(r.p.score) + '</td><td class="num">' + r.active.length + '</td><td class="num">' + r.p.defLabels.length + '</td><td class="num">' + r.found + '</td><td>' + STATUS[r.status][0] + ' ' + STATUS[r.status][1] + '</td></tr>'; });
+    $('tablewrap').innerHTML = s + '</tbody></table>' + (rr.length > 400 ? '<p class="muted small">First 400 rows of ' + rr.length + '. Use the filters above.</p>' : '');
+    $('tablewrap').querySelectorAll('th.sortable').forEach(th => th.addEventListener('click', () => { const kk = th.dataset.k; state.tsort = [kk, state.tsort[0] === kk ? -state.tsort[1] : (kk === 'name' || kk === 'group' || kk === 'status' ? 1 : -1)]; renderTable(); }));
+    $('tablewrap').querySelectorAll('tr.click').forEach(tr => tr.addEventListener('click', () => openViewer(+tr.dataset.i)));
+  }
+  function renderBrowser() {
+    renderChips();
+    list = rows();
+    $('count').textContent = list.length + ' pictures';
+    const gal = state.view === 'gallery';
+    $('gallery').hidden = !gal; $('tablewrap').hidden = gal; $('more').hidden = !(gal && list.length > state.shown);
+    $('tab-gal').setAttribute('aria-pressed', gal); $('tab-tab').setAttribute('aria-pressed', !gal);
+    if (gal) {
+      $('gallery').innerHTML = list.slice(0, state.shown).map(card).join('');
+      $('gallery').querySelectorAll('.card').forEach(c => c.addEventListener('click', () => openViewer(+c.dataset.i)));
+    } else renderTable();
+  }
+  $('more').addEventListener('click', () => { state.shown += 48; renderBrowser(); });
+  $('tab-gal').addEventListener('click', () => { state.view = 'gallery'; renderBrowser(); });
+  $('tab-tab').addEventListener('click', () => { state.view = 'table'; renderBrowser(); });
+  $('sortSel').addEventListener('change', e => { state.sort = e.target.value; renderBrowser(); });
+  $('clsSel').innerHTML = '<option value="">All</option>' + D.classes.map(c => '<option>' + esc(c) + '</option>').join('');
+  $('clsSel').addEventListener('change', e => { state.cls = e.target.value; state.shown = 48; renderBrowser(); });
+  $('q').addEventListener('input', e => { state.q = e.target.value; state.shown = 48; renderBrowser(); });
+
+  /* viewer */
+  const V = { labels: true, marks: true, preds: true };
+  function openViewer(i) {
+    state.open = i; const r = M.per[i], p = r.p, st = STATUS[r.status];
+    $('v-title').textContent = p.name + '  |  ' + st[0] + ' ' + st[1] + '  |  score ' + fmt(p.score, 3); $('v-title').title = $('v-title').textContent;
+    $('v-img').innerHTML = '<img alt="" src="' + D.images[p.img] + '">' + overlay(r, V);
+    const lab = p.defLabels.map((l, k) => '<li>' + esc(l.c) + ' (' + l.x1 + ',' + l.y1 + ',' + l.x2 + ',' + l.y2 + ') ' + (r.foundFlags[k] ? '<b>✓ found</b>' : '<b>✗ missed</b>') + '</li>').join('');
+    const prs = r.active.map(b => '<li>score ' + fmt(b.score) + ' (' + b.x1 + ',' + b.y1 + ',' + b.x2 + ',' + b.y2 + ') ' + (b.ok ? '<b>✓ correct</b>' : '<b>✗ wrong</b>') + '</li>').join('');
+    $('v-side').innerHTML =
+      '<p class="small muted" style="margin-top:0">Group: <b>' + p.group + '</b>. Picture ' + p.w + ' x ' + (D.meta.full_height || p.h) + ' px; the part below the chain is cut.</p>' +
+      '<label class="small"><input type="checkbox" id="tg-l" ' + (V.labels ? 'checked' : '') + '> labelled defects (green)</label><br>' +
+      '<label class="small"><input type="checkbox" id="tg-m" ' + (V.marks ? 'checked' : '') + '> defect_1 to defect_4 labels (dashed)</label><br>' +
+      '<label class="small"><input type="checkbox" id="tg-p" ' + (V.preds ? 'checked' : '') + '> predicted boxes (orange; dotted = wrong)</label>' +
+      '<h2 style="margin-top:14px">Labelled defects</h2>' + (lab ? '<ul class="small">' + lab + '</ul>' : '<p class="muted small">None.</p>') +
+      '<h2>Predicted boxes (' + r.active.length + ', ' + r.hit + ' correct)</h2>' + (prs ? '<ul class="small">' + prs + '</ul>' : '<p class="muted small">No box passes the cutoff.</p>') +
+      '<p class="small muted">Marks: ' + p.markLabels.length + ' defect_1 to defect_4 labels.</p>';
+    ['l', 'm', 'p'].forEach(k => $('tg-' + k).addEventListener('change', e => { V[{ l: 'labels', m: 'marks', p: 'preds' }[k]] = e.target.checked; openViewer(state.open); }));
+    if (!$('viewer').open) $('viewer').showModal();
+  }
+  $('v-close').addEventListener('click', () => $('viewer').close());
+  function step(d) { if (!list.length) return; const pos = list.findIndex(r => r.p.i === state.open); const n = list[(pos + d + list.length) % list.length]; openViewer(n.p.i); }
+  $('v-prev').addEventListener('click', () => step(-1)); $('v-next').addEventListener('click', () => step(1));
+  document.addEventListener('keydown', e => { if (!$('viewer').open) return; if (e.key === 'ArrowLeft') step(-1); else if (e.key === 'ArrowRight') step(1); });
+  $('viewer').addEventListener('click', e => { if (e.target === $('viewer')) $('viewer').close(); });
+
+  function renderAll() {
+    M = Logic.evaluate(D, state.cut, state.rule);
+    renderKpis(); renderHisto(); renderRoc(); renderConf(); renderClasses(); renderBrowser();
+    if ($('viewer').open && state.open >= 0) openViewer(state.open);
+  }
+  setCut(Logic.cutForFalseAlarm(D, 5));
+})();
+</script>
+</body>
+</html>

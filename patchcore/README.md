@@ -28,6 +28,7 @@ The weights are an ImageNet-trained file. Check the license terms before commerc
 3. `./run.sh` in that folder. The run folder `patchcore_<data>_<date>_<time>/` has `checkpoints/memory_bank.pt`, `results/` (scores.csv and the
    pictures of some OK and all NG pictures), `tensorboard/` and `run.log`.
 4. Any folder of pictures: `./run.sh --infer <folder> --checkpoint <run folder>/checkpoints/memory_bank.pt --out <folder>`
+   It writes `scores.csv`, `pictures/` and `boxes/` (the prediction boxes of every picture as json, see the repo README).
 
 ## config.yaml
 | Key | Meaning |
@@ -42,6 +43,7 @@ The weights are an ImageNet-trained file. Check the license terms before commerc
 | `model.blur_sigma` | blur of the error map (0 = none) |
 | `model.heatmap_scaling_factor` | **worked out and written by the run** (when `calibration_pictures` is more than 0). Optional otherwise. Error that is drawn dark red. Missing = the 99th percentile of the pictures of that run (like JADE's TensorBoard) |
 | `model.heatmap_floor` | **worked out and written by the run** (as above). Optional otherwise, default 0. An error at or below it is dark blue, and the colours spread from there up to the dark-red value. PatchCore's error is a distance and is never near 0, so a normal chain looks yellow without a floor. Use the normal level that the run prints (`[Result] normal level ...`) or about the OK pictures' typical error |
+| `model.visualisation` | `"heatmap"` (default) or `"boxes"`: what the saved pictures show, the heat map or the prediction boxes. The json boxes are written in both cases (see the repo README) |
 | `model.pixelwise_threshold` | 0-100. A pixel at or below it is drawn dark blue. 0 = nothing hidden |
 | `output.calibration_pictures` | OK pictures (spread over the folder) kept **out of the memory bank**. They show what unseen normal looks like, set the colours (floor and dark red) and are the OK pictures drawn after the run. 0 = none held out, colours stay as in the config |
 | `output.ng_pictures` | how many NG pictures are scored and drawn after the run |
