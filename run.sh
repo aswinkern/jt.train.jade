@@ -1,10 +1,13 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────────────────────────
-# run.sh — JADE_v3 (Docker-enabled), same idea as jt.train.yolonas/run.sh
+# run.sh — JADE_v3 and PatchCore (Docker-enabled), same idea as jt.train.yolonas/run.sh
 #
-#   Copy run.sh and config.yaml into a sim folder, open a terminal there and run ./run.sh
+#   Copy run.sh and one config template as config.yaml into a sim folder, open a terminal there and run ./run.sh
+#   The method is the line  method:  of config.yaml (config_jade.yaml = DINOv2 + autoencoders, the default;  config_patchcore.yaml = PatchCore).
+#   PatchCore: ./run.sh builds the memory bank (checkpoints/memory_bank.pt) from the OK pictures and sets the colours; --infer takes
+#   --checkpoint <run folder>/checkpoints/memory_bank.pt. --export, --pretrain, --calibrate, --analyse and --redo are for jade only.
 #   It opens the docker container itself. The code is NOT copied: code_dir in config.yaml says where it is.
-#   Everything it saves (jade_<data>_<date>_<time>/ ...) goes into the folder you run it from, as you (never root), with group-writable permissions.
+#   Everything it saves (jade_<data>_<date>_<time>/ or patchcore_<data>_<date>_<time>/ ...) goes into the folder you run it from, as you (never root), with group-writable permissions.
 #
 #   ./run.sh                          train. Data folder = data_dir of config.yaml, it holds images/ (OK pictures, used for training)
 #                                     and NG/ (NG pictures, only shown in TensorBoard, never trained on). A missing folder is created and
@@ -77,6 +80,11 @@ if [ "$USE_DOCKER" = true ] && [ ! -f /.dockerenv ]; then
         GPU=$(python3 -c "import yaml,sys;print(yaml.safe_load(open(sys.argv[1])).get('gpu_id', 0))" "$CONFIG") || exit 1
     fi
     case "$GPU" in ""|*[!0-9]*) echo "[ERROR] gpu id must be a number (0, 1 ...), got: $GPU"; exit 1;; esac
+    METHOD=$(python3 -c "import yaml,sys;print(yaml.safe_load(open(sys.argv[1])).get('method') or 'jade')" "$CONFIG") || exit 1
+    case "$METHOD" in jade|patchcore) ;; *) echo "[ERROR] method in $CONFIG must be jade or patchcore, got: $METHOD"; exit 1;; esac
+    if [ "$METHOD" = patchcore ]; then
+        case "$CMD" in pretrain|calibrate|analyse|export) echo "[ERROR] --$CMD is only for method jade (this config says patchcore)"; exit 1;; esac
+    fi
 
     # Translate a host path to its Docker path (the mounts below)
     translate_path() {
@@ -99,7 +107,7 @@ if [ "$USE_DOCKER" = true ] && [ ! -f /.dockerenv ]; then
     # One container per folder + mode, so runs on the two GPUs or train + infer side by side never collide.
     IFS='/' read -ra PATH_PARTS <<< "$(pwd -P | sed 's|^/||')"
     N_PARTS=${#PATH_PARTS[@]}; START=$(( N_PARTS > 3 ? N_PARTS - 3 : 0 ))
-    CONTAINER_NAME="${JADE_NAME:-jade_$(IFS=_; echo "${PATH_PARTS[*]:$START}")_${CMD}}"
+    CONTAINER_NAME="${JADE_NAME:-${PATCHCORE_NAME:-${METHOD}_$(IFS=_; echo "${PATH_PARTS[*]:$START}")_${CMD}}}"
     CONTAINER_NAME="$(echo "$CONTAINER_NAME" | sed 's/[^a-zA-Z0-9_.-]/_/g')"
     if docker ps --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"; then
         echo "[ERROR] Already running: $CONTAINER_NAME (same folder, same mode). Stop it first:  docker stop $CONTAINER_NAME"; exit 1
@@ -156,8 +164,15 @@ fi
 [ -f "$CONFIG" ] || { echo "[ERROR] Config not found: $CONFIG"; exit 1; }
 cfg() { $PY -c "import yaml,sys;d=yaml.safe_load(open(sys.argv[1]));print(eval(sys.argv[2], {'d': d}) or '')" "$CONFIG" "$1"; }
 CODE_DIR=$(cfg "d.get('code_dir')")
-[ -f "$CODE_DIR/training/train.py" ] || { echo "[ERROR] The JADE code was not found. code_dir in $CONFIG is '$CODE_DIR' (it must be the folder with training/, model/ ...)"; exit 1; }
-echo "[Run] code: $CODE_DIR   config: $CONFIG"
+METHOD=$(cfg "d.get('method') or 'jade'")
+if [ "$METHOD" = patchcore ]; then
+    ENTRY_TRAIN="$CODE_DIR/patchcore/fit.py"; ENTRY_INFER="$CODE_DIR/patchcore/infer.py"; REDO=""        # PatchCore has no saved raw results to reuse
+    case "$CMD" in pretrain|calibrate|analyse|export) echo "[ERROR] --$CMD is only for method jade (this config says patchcore)"; exit 1;; esac
+else
+    ENTRY_TRAIN="$CODE_DIR/training/train.py"; ENTRY_INFER="$CODE_DIR/inference/infer_images.py"
+fi
+[ -f "$ENTRY_TRAIN" ] || { echo "[ERROR] The $METHOD code was not found: $ENTRY_TRAIN. code_dir in $CONFIG is '$CODE_DIR' (it must be the folder with run.sh, training/, patchcore/ ...)"; exit 1; }
+echo "[Run] method: $METHOD   code: $CODE_DIR   config: $CONFIG"
 
 case "$CMD" in
   train)
@@ -166,33 +181,36 @@ case "$CMD" in
     count() { find "$1" -maxdepth 1 -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' \) | wc -l; }
     NOK=$(count "$DD/images"); NNG=$(count "$DD/NG")
     echo "[Run] data folder: $DD"
-    echo "[Run]   images/  OK pictures, used for training:                     $NOK"
-    echo "[Run]   NG/      NG pictures, only shown in TensorBoard (never trained on): $NNG"
+    echo "[Run]   images/  OK pictures, used for training (PatchCore: for the memory bank): $NOK"
+    echo "[Run]   NG/      NG pictures, only scored and shown (never trained on):            $NNG"
     if [ "$NOK" = 0 ]; then
         echo "[Run] No OK pictures yet. Put the OK pictures in $DD/images and the NG pictures in $DD/NG, then run ./run.sh again."
         exit 0
     fi
     [ "$NNG" = 0 ] && echo "[Run] Note: NG/ is empty, TensorBoard will show only OK pictures."
     OUTDIR=$(pwd)
-    EXP=$OUTDIR/jade_$(basename "$DD")_${RUN_STAMP:-$(date +%Y%m%d_%H%M%S)}          # model + data folder + date and time: unique, and sorts by time
+    EXP=$OUTDIR/${METHOD}_$(basename "$DD")_${RUN_STAMP:-$(date +%Y%m%d_%H%M%S)}          # model + data folder + date and time: unique, and sorts by time
     mkdir -p "$EXP"
     sed "s#@EXP@#$EXP#g" "$CONFIG" > "$EXP/config.yaml"
     $TB --logdir "$OUTDIR" --host 0.0.0.0 --port 6006 &> /tmp/tensorboard.log &
-    echo "[Run] TensorBoard: http://localhost:${TB_HOST_PORT:-6006}  (runs: $OUTDIR/jade_*/tensorboard)"
+    echo "[Run] TensorBoard: http://localhost:${TB_HOST_PORT:-6006}  (runs: $OUTDIR/${METHOD}_*/tensorboard)"
     echo "[Run] output folder: $EXP"
-    $PY -u "$CODE_DIR/training/train.py" -c "$EXP/config.yaml" 2>&1 | grep --line-buffered -v -E "$FILTER" | grep --line-buffered -v -E "^\s*$|Batch \[[1-9]" | tee "$EXP/run.log"
-    # When the training has finished: the TensorBoard colour scale of the last epoch goes into config.yaml next to this run.sh too,
-    # so that --infer draws the pictures like TensorBoard (heatmap_scaling_factor).
-    if grep -q "Training complete" "$EXP/run.log"; then
-        SC=$($PY -c "import yaml,sys; v=yaml.safe_load(open(sys.argv[1]))['model'].get('heatmap_scaling_factor'); print('' if v is None else v)" "$EXP/config.yaml")
-        if [ -n "$SC" ]; then
-            $PY "$CODE_DIR/tools/set_config_value.py" "$CONFIG" heatmap_scaling_factor "$SC" \
-                && echo "[Run] heatmap_scaling_factor: $SC (the TensorBoard colour scale of the last epoch) written to $(pwd)/$CONFIG"
-        fi
+    $PY -u "$ENTRY_TRAIN" -c "$EXP/config.yaml" 2>&1 | grep --line-buffered -v -E "$FILTER" | grep --line-buffered -v -E "^\s*$|Batch \[[1-9]" | tee "$EXP/run.log"
+    # When the run has finished, the colours it worked out go into config.yaml next to this run.sh too, so that --infer draws like the run:
+    #   jade: heatmap_scaling_factor (the TensorBoard colour scale of the last epoch)
+    #   patchcore: heatmap_scaling_factor and heatmap_floor
+    if [ "$METHOD" = patchcore ]; then DONE_RE="heatmap_floor .* written to"; KEYS="heatmap_scaling_factor heatmap_floor"
+    else DONE_RE="Training complete"; KEYS="heatmap_scaling_factor"; fi
+    if grep -q "$DONE_RE" "$EXP/run.log"; then
+        for K in $KEYS; do
+            V=$($PY -c "import yaml,sys; v=yaml.safe_load(open(sys.argv[1]))['model'].get(sys.argv[2]); print('' if v is None else v)" "$EXP/config.yaml" "$K")
+            [ -n "$V" ] && $PY "$CODE_DIR/tools/set_config_value.py" "$CONFIG" "$K" "$V"
+        done
+        echo "[Run] $KEYS written to $(pwd)/$CONFIG"
     fi
     ;;
   infer)
-    [ -n "$CK" ] && [ -n "$OUT" ] || { echo "[ERROR] --infer needs --checkpoint <epoch_N.pt> and --out <folder>"; exit 1; }
+    [ -n "$CK" ] && [ -n "$OUT" ] || { echo "[ERROR] --infer needs --checkpoint <epoch_N.pt, or memory_bank.pt for patchcore> and --out <folder>"; exit 1; }
     [ -d "$INFER_DIR" ] || { echo "[ERROR] picture folder not found: $INFER_DIR"; exit 1; }
     [ -f "$CK" ] || { echo "[ERROR] checkpoint not found: $CK"; exit 1; }
     MODEL_CFG=$(dirname "$CK")/../config.yaml                    # the model definition of the run that owns the checkpoint
@@ -201,7 +219,7 @@ case "$CMD" in
     [ -f "$SET" ] || { echo "[ERROR] settings file not found: $SET"; exit 1; }
     mkdir -p "$OUT"
     echo "[Run] pictures: $INFER_DIR"; echo "[Run] checkpoint: $CK"; echo "[Run] model config: $MODEL_CFG"; echo "[Run] settings read from: $SET"; echo "[Run] output: $OUT"
-    $PY -u "$CODE_DIR/inference/infer_images.py" -c "$MODEL_CFG" --settings "$SET" --checkpoint "$CK" --data "$INFER_DIR" -o "$OUT" --limit "$LIMIT" --batch "$BATCH" $REDO 2>&1 \
+    $PY -u "$ENTRY_INFER" -c "$MODEL_CFG" --settings "$SET" --checkpoint "$CK" --data "$INFER_DIR" -o "$OUT" --limit "$LIMIT" --batch "$BATCH" $REDO 2>&1 \
         | grep --line-buffered -v -E "$FILTER" | grep --line-buffered -v -E "^\s*$"
     ;;
   tensorboard)

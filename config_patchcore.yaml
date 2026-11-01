@@ -1,0 +1,38 @@
+method: "patchcore"
+gpu_id: 0
+code_dir: "/jidoka/code/jt.train.jade"
+
+customer:
+    customer_name: "BorgWarner_138P"
+
+data:
+    data_dir: "/jidoka/simulations/jdisk3/jt.cust.anomaly_jade_v3/data_object_detection/data_3"
+    image_extensions: ["*.png", "*.jpg", "*.jpeg"]
+    batch_size: 8
+    num_workers: 4
+    image_size: [182, 952]
+
+model:
+    backbone:
+        type: "wide_resnet50_2"
+        weights_path: "/jidoka/code/jt.train.jade/patchcore/weights/wide_resnet50_2_imagenet.pth"
+        layers: [2, 3]
+
+    patch:
+        neighbourhood: 3
+        embed_dim: 1024
+
+    memory:
+        coreset_ratio: 0.1
+        projection_dim: 128
+        seed: 0
+
+    blur_sigma: 4
+    pixelwise_threshold: 0
+
+output:
+    checkpoint_dir: "@EXP@/checkpoints"
+    tensorboard_dir: "@EXP@/tensorboard"
+    results_dir: "@EXP@/results"
+    calibration_pictures: 20
+    ng_pictures: 10
