@@ -12,6 +12,8 @@
 #                                     Each run gets its own folder, named model + data folder + date and time, e.g. ./jade_data_2_20261031_114205
 #                                     (never overwrites): config.yaml, checkpoints/, tensorboard/, run.log
 #                                     TensorBoard starts with the training, its address is printed (the port is free-picked from 6001).
+#                                     When the training has finished, the TensorBoard colour scale of the last epoch is written as
+#                                     heatmap_scaling_factor into the run's config.yaml and into config.yaml next to run.sh (--infer reads it there).
 #   ./run.sh --infer <folder> --checkpoint <epoch_N.pt> --out <folder>   [--settings <config.yaml>] [--limit N] [--batch N] [--redo]
 #                                     the trained model on any folder of pictures (sub-folders too). Writes to --out: raw/ (model output, no
 #                                     post-processing), post/ (result with the settings), scores.csv, pictures/ [original | heat map].
@@ -179,6 +181,15 @@ case "$CMD" in
     echo "[Run] TensorBoard: http://localhost:${TB_HOST_PORT:-6006}  (runs: $OUTDIR/jade_*/tensorboard)"
     echo "[Run] output folder: $EXP"
     $PY -u "$CODE_DIR/training/train.py" -c "$EXP/config.yaml" 2>&1 | grep --line-buffered -v -E "$FILTER" | grep --line-buffered -v -E "^\s*$|Batch \[[1-9]" | tee "$EXP/run.log"
+    # When the training has finished: the TensorBoard colour scale of the last epoch goes into config.yaml next to this run.sh too,
+    # so that --infer draws the pictures like TensorBoard (heatmap_scaling_factor).
+    if grep -q "Training complete" "$EXP/run.log"; then
+        SC=$($PY -c "import yaml,sys; v=yaml.safe_load(open(sys.argv[1]))['model'].get('heatmap_scaling_factor'); print('' if v is None else v)" "$EXP/config.yaml")
+        if [ -n "$SC" ]; then
+            $PY "$CODE_DIR/tools/set_config_value.py" "$CONFIG" heatmap_scaling_factor "$SC" \
+                && echo "[Run] heatmap_scaling_factor: $SC (the TensorBoard colour scale of the last epoch) written to $(pwd)/$CONFIG"
+        fi
+    fi
     ;;
   infer)
     [ -n "$CK" ] && [ -n "$OUT" ] || { echo "[ERROR] --infer needs --checkpoint <epoch_N.pt> and --out <folder>"; exit 1; }

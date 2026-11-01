@@ -11,6 +11,7 @@ from torch.utils.tensorboard import SummaryWriter
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from data import data_handler as dh
 from model import model as md
+from tools.set_config_value import set_model_value
 
 
 def train(config_dict):
@@ -40,6 +41,7 @@ def train(config_dict):
     eval_freq      = config_dict["training"]["eval_frequency_epochs"]
 
     print(f"[Train] Starting training for {num_epochs} epochs")
+    last_scale = None                                   # the TensorBoard colour scale (global p99) of the last evaluation
 
     for epoch in range(1, num_epochs + 1):
         jade.train()
@@ -75,10 +77,16 @@ def train(config_dict):
             jade.save_checkpoint(epoch, checkpoint_dir)
 
         if epoch % eval_freq == 0:
-            _log_eval_images(jade, config_dict, device, writer, epoch)
+            last_scale = _log_eval_images(jade, config_dict, device, writer, epoch)
+
+    if num_epochs % checkpoint_freq != 0:               # the last epoch always has its checkpoint and its colour scale
+        jade.save_checkpoint(num_epochs, checkpoint_dir)
+    if num_epochs % eval_freq != 0:
+        last_scale = _log_eval_images(jade, config_dict, device, writer, num_epochs)
 
     writer.close()
     print("[Train] Training complete.")
+    return last_scale
 
 
 @torch.no_grad()
@@ -126,7 +134,7 @@ def _log_eval_images(jade, config_dict, device, writer, epoch):
 
     all_paths = ok_paths + ng_paths
     if not all_paths:
-        return
+        return None
 
     # Step 1 — collect raw error maps
     raw_imgs   = []
@@ -142,7 +150,7 @@ def _log_eval_images(jade, config_dict, device, writer, epoch):
         error_maps.append(error_map)
 
     if not error_maps:
-        return
+        return None
 
     # Step 2 — global normalization
     all_errors = np.concatenate([e.flatten() for e in error_maps])
@@ -170,6 +178,8 @@ def _log_eval_images(jade, config_dict, device, writer, epoch):
         idx = i - len(ok_paths) if tag == "NG" else i
         writer.add_image(f"{tag}/image_{idx}", comparison_tensor, epoch)
 
+    return float(global_p99)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="JADE_v3 Training")
@@ -179,4 +189,7 @@ if __name__ == "__main__":
     with open(args.config) as f:
         config_dict = yaml.load(f, Loader=yaml.FullLoader)
 
-    train(config_dict)
+    scale = train(config_dict)
+    if scale:                                            # --infer reads this number from the config, so it draws like TensorBoard
+        set_model_value(args.config, "heatmap_scaling_factor", "%.6f" % scale)
+        print(f"[Train] heatmap_scaling_factor = {scale:.6f} (the TensorBoard colour scale of the last epoch) written to {args.config}")
