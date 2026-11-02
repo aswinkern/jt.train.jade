@@ -59,3 +59,12 @@ They belong to that memory bank and that image size, and every finished run repl
 - The score of a picture is the largest error in its map (`score_max` in scores.csv).
 - The OK pictures shown after the run were used to build the bank, so they look better than pictures it has not seen. Use `--infer` on unseen OK pictures.
 - Memory: the features of all OK pictures are held in RAM as float16 (about 5 MB per picture at 182 x 952 with `embed_dim` 1024).
+
+## Export for Triton
+
+`./run.sh --export` (with the `export:` block of `config.yaml`, see `config_patchcore.yaml`) writes `<models_dir>/<model_name>/Serving_model/` with `1/model.onnx` (+ `.data`)
+and `config.pbtxt`. The model takes a picture `(B, 3, H, W)` and returns the raw error map `(B, H, W)`; the memory bank, the search for the nearest patch, the
+enlarging and the blur are inside, the colour settings (`heatmap_scaling_factor`, `heatmap_floor`, `pixelwise_threshold`, `min_box_score`) are not: they are the variables at the
+top of `triton/patchcore_client.py` (the export prints them). The export checks the ONNX against `--infer` on OK and NG pictures. `render.py` (colours, pictures, boxes) is
+the code both `--infer` and the client use. TensorRT and Triton: `convert.md`.
+

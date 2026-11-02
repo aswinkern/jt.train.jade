@@ -6,32 +6,30 @@
 <title>Detection analytics</title>
 <style>
 :root{
-  --bg:#f6f7f9; --surface:#ffffff; --text:#1c2430; --muted:#5b6675; --line:#d9dee5; --grid:#e8ebf0;
-  --okay:#0072B2; --defect:#E69F00; --label:#009E73; --pred:#D55E00; --accent:#0072B2;
-  --warn-bg:#fff4e0; --shadow:0 1px 2px rgba(20,30,50,.08);
-}
-@media (prefers-color-scheme: dark){
-  :root:not([data-theme="light"]){
-    --bg:#10151c; --surface:#18202a; --text:#e6eaf0; --muted:#9aa6b6; --line:#2c3746; --grid:#243040;
-    --okay:#56B4E9; --defect:#F0B53D; --label:#2FC79A; --pred:#FF8A47; --accent:#56B4E9; --warn-bg:#2a2314; --shadow:none;
-  }
-}
-:root[data-theme="dark"]{
-  --bg:#10151c; --surface:#18202a; --text:#e6eaf0; --muted:#9aa6b6; --line:#2c3746; --grid:#243040;
-  --okay:#56B4E9; --defect:#F0B53D; --label:#2FC79A; --pred:#FF8A47; --accent:#56B4E9; --warn-bg:#2a2314; --shadow:none;
+  --bg:#f2f4f8; --surface:#ffffff; --text:#18202c; --muted:#5a6678; --line:#dfe4ec; --grid:#eceff4;
+  --okay:#0072B2; --defect:#E69F00; --label:#009E73; --pred:#D55E00; --accent:#1d4f91; --accent-soft:#e8eff9;
+  --good:#1b8a45; --warn:#6cbf84; --bad:#d63a32; --warn-bg:#fff4e0; --shadow:0 1px 2px rgba(16,28,48,.06),0 4px 14px rgba(16,28,48,.05);
 }
 *{box-sizing:border-box}
 [hidden]{display:none !important}
-html{background:var(--bg)}
-body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-.wrap{max-width:1320px;margin:0 auto;padding:0 16px 48px}
-header{padding:22px 0 8px}
-h1{margin:0;font-size:24px;font-weight:650}
-h2{margin:0 0 4px;font-size:17px;font-weight:650}
+html{background:var(--bg);color-scheme:light}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 "Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1320px;margin:0 auto;padding:0 16px 56px}
+header{background:var(--surface);border-bottom:1px solid var(--line);border-top:4px solid var(--accent);margin:0 -16px 20px;padding:20px 16px 16px}
+header .in{max-width:1288px;margin:0 auto}
+.eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--accent)}
+h1{margin:2px 0 8px;font-size:28px;font-weight:700;letter-spacing:-.01em}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{background:var(--grid);border:1px solid var(--line);border-radius:6px;padding:2px 9px;font-size:12.5px;color:var(--muted)}
+h2{margin:0 0 6px;font-size:18px;font-weight:700;letter-spacing:-.005em}
 .muted{color:var(--muted)}
 .small{font-size:13px}
 .hint{margin:0 0 12px;color:var(--muted);font-size:13px}
-.controls{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);padding:10px 0;margin-bottom:16px}
+.nav{display:flex;align-items:center;gap:8px;margin:-6px 0 16px;border-bottom:2px solid var(--line)}
+.nav button{border:0;border-bottom:3px solid transparent;border-radius:0;background:none;padding:10px 18px;font-weight:700;font-size:15px;color:var(--muted);margin-bottom:-2px}
+.nav button[aria-pressed="true"]{background:none;color:var(--accent);border-bottom-color:var(--accent)}
+.nav button:hover{color:var(--accent);border-color:transparent;border-bottom-color:var(--accent)}
+.nav .grow{flex:1}
 .controls .row{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center}
 .controls label{font-weight:600}
 .controls input[type=range]{width:min(420px,70vw);vertical-align:middle;accent-color:var(--accent)}
@@ -41,13 +39,18 @@ button{cursor:pointer}
 button:hover{border-color:var(--accent)}
 button:focus-visible,select:focus-visible,input:focus-visible,.card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 button[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:var(--accent)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:6px 0 16px}
+.kpi{border-left:5px solid var(--c,var(--accent));padding:12px 16px;background:#fafbfd;border-radius:10px;border-top:1px solid var(--grid);border-right:1px solid var(--grid);border-bottom:1px solid var(--grid)}
+.kpi .t{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.kpi .v{font-size:32px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.15;margin-top:2px}
+.kpi .v small{font-size:16px;font-weight:600;color:var(--muted)}
+.kpi .s{font-size:13px;color:var(--muted)}
+.verdict{font-size:15px;color:var(--muted)}
+.sec{display:flex;align-items:baseline;gap:10px;margin:0 0 4px}
+.sec .num{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;font-size:13px;font-weight:700}
 .presets{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px}
-.kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;box-shadow:var(--shadow)}
-.kpi .t{font-size:13px;color:var(--muted)}
-.kpi .v{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2}
-.kpi .s{font-size:13px;color:var(--muted)}
-.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;box-shadow:var(--shadow);margin-bottom:16px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px 22px;box-shadow:var(--shadow);margin-bottom:18px}
 .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:16px;margin-bottom:16px}
 .grid2 .panel{margin-bottom:0}
 svg text{fill:var(--muted);font:12px system-ui,sans-serif}
@@ -57,7 +60,7 @@ svg .gl{stroke:var(--grid);stroke-width:1}
 .sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}
 table{border-collapse:collapse;width:100%}
 th,td{padding:6px 10px;text-align:left;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
-th{font-size:13px;color:var(--muted);font-weight:600;white-space:nowrap}
+th{font-size:12px;color:var(--muted);font-weight:700;white-space:nowrap;text-transform:uppercase;letter-spacing:.04em}
 th.sortable{cursor:pointer;user-select:none}
 th.sortable:hover{color:var(--text)}
 tbody tr.click{cursor:pointer}
@@ -66,15 +69,15 @@ td.num,th.num{text-align:right}
 .conf td,.conf th{text-align:right}
 .conf td:first-child,.conf th:first-child{text-align:left}
 .bar{display:grid;grid-template-columns:110px 1fr 160px;gap:10px;align-items:center;margin:7px 0}
-.bar .track{height:16px;background:var(--grid);border-radius:4px;overflow:hidden}
+.bar .track{height:16px;background:#f3c9c6;border-radius:4px;overflow:hidden}
 .bar .fill{height:100%;background:var(--label)}
 .bar .nm{font-weight:600}
 .bar .ct{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
 .tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
 .filters{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;margin-bottom:12px}
 .gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden;cursor:pointer;display:block;text-align:left;padding:0;color:inherit}
-.card:hover{border-color:var(--accent)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:0 1px 2px rgba(16,28,48,.05);cursor:pointer;display:block;text-align:left;padding:0;color:inherit}
+.card:hover{border-color:var(--accent);box-shadow:0 4px 14px rgba(16,28,48,.12)}
 .card .cap{padding:6px 10px 8px;font-size:12.5px}
 .card .cap .nm{font-weight:600;word-break:break-all}
 .thumb{position:relative;background:#000;line-height:0}
@@ -95,54 +98,78 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 .how{background:var(--warn-bg);border-radius:10px;padding:10px 14px;font-size:13.5px;margin-bottom:16px}
 .how b{font-weight:650}
 @media (max-width:820px){.dlg{grid-template-columns:1fr}.bar{grid-template-columns:90px 1fr}.bar .ct{grid-column:1 / -1}}
+
+.verdict{line-height:1.55;margin:4px 0 14px}
+.verdict b{font-weight:700}
+.charts4{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}
+.charts4 figure{margin:0;background:#fafbfd;border:1px solid var(--grid);border-radius:12px;padding:14px}
+.charts4 figcaption{font-weight:650;margin-bottom:6px}
+.charts4 figcaption span{display:block;font-weight:400;color:var(--muted);font-size:12.5px}
+.lg{list-style:none;margin:8px 0 0;padding:0;font-size:13.5px}
+.lg li{margin:3px 0}
+svg .dbig{font:700 22px system-ui,sans-serif;fill:var(--text)}
+svg .dsm{font:12px system-ui,sans-serif;fill:var(--muted)}
+svg .slice{font:700 9.5px system-ui,sans-serif;fill:#fff;stroke-width:3.5px;paint-order:stroke;stroke-linejoin:round}
+.exg{margin:0 0 22px}
+.exh{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:2px}
+.exh h3{margin:0;font-size:16px}
+.cls-note{font-size:13px;color:var(--muted)}
+details.more>summary,details.adv>summary{cursor:pointer;font-weight:650;font-size:16px}
+details.adv{display:inline-block;margin-left:6px}
+details.adv>summary{font-size:13.5px;font-weight:600;color:var(--muted)}
+details.adv .box{position:absolute;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:6px;z-index:6;box-shadow:0 4px 14px rgba(0,0,0,.2)}
+.warnbar{background:var(--warn-bg);border:1px solid #e0b45a;border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:14px}
+.about h3{margin:14px 0 4px;font-size:15px}
+.defs td:nth-child(2){color:var(--muted)}
+.defs td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.about ul{margin:4px 0 8px;padding-left:20px}
+.about li{margin:3px 0}
+.range{color:var(--muted);font-size:14px}
+#settab td,#settab th{vertical-align:top}
+#settab td.v{font-weight:700;white-space:nowrap}
+.tag{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:0 8px;font-size:12px;font-weight:600;background:var(--bg);white-space:nowrap}
+code{background:var(--grid);border-radius:4px;padding:0 4px;font-size:.92em}
 </style>
 </head>
 <body>
 <div class="wrap">
-<header>
+<header><div class="in">
+  <div class="eyebrow">Anomaly detection report</div>
   <h1 id="title">Detection analytics</h1>
-  <p class="muted small" id="sub"></p>
-</header>
+  <div class="chips" id="sub"></div>
+</div></header>
 
-<div class="controls" role="group" aria-label="Score cutoff">
-  <div class="row">
-    <label for="cut">Score cutoff</label>
-    <input type="range" id="cut" step="0.001">
-    <output id="cutv" for="cut"></output>
-    <span class="presets" id="presets" aria-label="Presets"></span>
-    <label class="small">Match rule <select id="rule" aria-label="Match rule">
-      <option value="overlap">label touches the box (any overlap)</option>
-      <option value="half">at least half of the label inside the box</option>
-      <option value="centre">centre of the label inside the box</option></select></label>
-    <span class="muted small">A picture is flagged when its score is at or above the cutoff. Boxes below the cutoff are ignored.</span>
+<nav class="nav" aria-label="Pages">
+  <button id="nav-stats" aria-pressed="true">Statistics</button>
+  <button id="nav-pics" aria-pressed="false">Pictures</button>
+  <span class="grow"></span><details class="adv"><summary>Advanced</summary><div class="box">
+      <label class="small">Match rule <select id="rule" aria-label="Match rule">
+        <option value="overlap">overlap: label touches the box</option>
+        <option value="half">half: at least 50% of the label inside the box</option>
+        <option value="centre">centre: centre of the label inside the box</option></select></label></div></details>
+</nav>
+
+<main id="page-stats">
+<div id="banner"></div>
+<section class="panel" id="glance">
+  <h2>At a glance</h2>
+  <div class="kpis" id="kpis"></div>
+  <div class="charts4">
+    <figure><figcaption>Defect pictures</figcaption><div id="pie-def"></div><ul class="lg" id="lg-def"></ul></figure>
+    <figure><figcaption>Okay pictures</figcaption><div id="pie-ok"></div><ul class="lg" id="lg-ok"></ul></figure>
+    <figure><figcaption>Labelled defects found<span>by class</span></figcaption><div id="bars-cls"></div></figure>
   </div>
-</div>
-
-<section class="how" id="how"></section>
-
-<section class="cards" id="kpis" aria-live="polite"></section>
-
-<section class="grid2">
-  <div class="panel"><h2>Score of the pictures</h2>
-    <p class="hint">Share of each group at every score. A good model keeps the two groups apart. The line is the cutoff.</p>
-    <div id="histo"></div><div class="legend" id="histo-leg"></div></div>
-  <div class="panel"><h2>Trade-off</h2>
-    <p class="hint">Every cutoff is a point: how many okay pictures are flagged (false alarms) against how many defect pictures are caught.</p>
-    <div id="roc"></div><div class="legend"><span><span class="sw" style="background:var(--pred)"></span>current cutoff</span></div></div>
 </section>
-
-<section class="grid2">
-  <div class="panel"><h2>Pictures at this cutoff</h2>
-    <p class="hint">Rows are the true group (from the labels), columns what the model says.</p>
-    <table class="conf" id="conf"></table></div>
-  <div class="panel"><h2>Labelled defects found, by class</h2>
-    <p class="hint">A labelled box is found when it lies in the region of a predicted box that passes the cutoff (match rule above).</p>
-    <div id="classes"></div></div>
-</section>
-
+<details class="panel more" id="settings"><summary>Settings and data check</summary>
+  <div style="height:8px"></div>
+  <table id="settab"></table>
+  <div id="about-body" style="margin-top:16px"></div>
+</details>
+</main>
+<main id="page-pics" hidden>
 <section class="panel" id="browser">
-  <h2>Pictures</h2>
-  <p class="hint">Green = labelled defect. Dashed grey = defect_1 to defect_4 labels. Solid orange = correct predicted box (a labelled defect is in its region). Dotted orange = wrong predicted box (no labelled defect in it).</p>
+  <h2>All pictures</h2>
+  <p class="hint"><span class="sw" style="background:var(--label)"></span>label &nbsp; <span class="sw" style="background:var(--pred)"></span>box, solid = correct, dotted = wrong &nbsp; <span class="sw" style="background:#c9d1db"></span>defect_1 to defect_4 marks</p>
   <div class="tabs" role="tablist"><button id="tab-gal" aria-pressed="true">Gallery</button><button id="tab-tab" aria-pressed="false">Table</button></div>
   <div class="filters">
     <span id="chips"></span>
@@ -157,6 +184,21 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
   <div id="tablewrap" hidden></div>
   <button class="more" id="more" hidden>Show more</button>
 </section>
+</main>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 </div>
 
 <dialog id="viewer" aria-label="Picture viewer">
@@ -201,15 +243,15 @@ const Logic = (function () {
     return i > 0;                                                   // 'overlap': the label touches the box
   }
 
-  // everything that depends on the cutoff and the match rule
+  // everything that depends on the match rule
   // a predicted box is correct (ok) when a labelled defect is in its region; a labelled defect is found when a predicted box has it in its region
-  function evaluate(D, cut, rule) {
+  function evaluate(D, rule) {
     rule = rule || 'overlap';
-    const m = { cut, rule, nOk: 0, nDef: 0, caught: 0, caughtRight: 0, falseAlarm: 0, labTot: 0, labFound: 0, boxes: 0, boxesHit: 0, byClass: {}, per: [] };
+    const m = { rule, nOk: 0, nDef: 0, caught: 0, caughtRight: 0, falseAlarm: 0, labTot: 0, labFound: 0, boxes: 0, boxesHit: 0, byClass: {}, per: [] };
     D.classes.forEach(c => { m.byClass[c] = { total: 0, found: 0 }; });
     D.pictures.forEach(p => {
-      const active = p.boxes.filter(b => b.score >= cut).map(b => Object.assign({}, b, { ok: p.defLabels.some(l => matches(l, b, rule)) }));
-      const flagged = p.score >= cut;
+      const active = p.boxes.map(b => Object.assign({}, b, { ok: p.defLabels.some(l => matches(l, b, rule)) }));
+      const flagged = active.length > 0;          // a picture is flagged when the model drew at least one box on it
       let found = 0;
       const foundFlags = p.defLabels.map(l => {
         const ok = active.some(b => matches(l, b, rule));
@@ -229,87 +271,48 @@ const Logic = (function () {
     return m;
   }
 
-  // the trade-off curve over every cutoff
-  function curve(D) {
-    const all = D.pictures.map(p => p.score).sort((a, b) => a - b);
-    const uniq = all.filter((v, i) => i === 0 || v !== all[i - 1]);
-    const nOk = D.okayScores.length, nDef = D.defectScores.length;
-    const pts = uniq.map(c => ({
-      cut: c,
-      fa: D.okayScores.filter(s => s >= c).length / Math.max(1, nOk),
-      tp: D.defectScores.filter(s => s >= c).length / Math.max(1, nDef)
-    }));
-    pts.push({ cut: all[all.length - 1] + 1e-6, fa: 0, tp: 0 });
-    return pts;
+  function wilson(k, n) {
+    if (!n) return [0, 0];
+    const z = 1.96, p = k / n, d = 1 + z * z / n, c = p + z * z / (2 * n), h = z * Math.sqrt(p * (1 - p) / n + z * z / (4 * n * n));
+    return [(c - h) / d, (c + h) / d];
   }
-  function auc(pts) {                      // chance that a random defect picture scores above a random okay picture
-    const s = pts.slice().sort((a, b) => a.fa - b.fa || a.tp - b.tp);
-    let a = 0, px = 0, py = 0;
-    s.forEach(q => { a += (q.fa - px) * (q.tp + py) / 2; px = q.fa; py = q.tp; });
-    a += (1 - px) * (1 + py) / 2;
-    return a;
-  }
-  // cutoff at which about `pct` percent of the okay pictures are flagged
-  function cutForFalseAlarm(D, pct) {
-    const n = D.okayScores.length, k = Math.min(n - 1, Math.floor(n * pct / 100));
-    return D.okayScores[k] + 1e-6;
-  }
-  function histogram(D, nb) {
-    const all = D.pictures.map(p => p.score);
-    const lo = Math.min.apply(null, all), hi = Math.max.apply(null, all), w = (hi - lo) / nb || 1;
-    const mk = () => new Array(nb).fill(0);
-    const ok = mk(), df = mk();
-    D.pictures.forEach(p => { const i = Math.min(nb - 1, Math.floor((p.score - lo) / w)); (p.group === 'okay' ? ok : df)[i]++; });
-    return { lo, hi, w, ok, df, nOk: D.okayScores.length, nDef: D.defectScores.length };
-  }
-  return { inter, area, matches, prepare, evaluate, curve, auc, cutForFalseAlarm, histogram };
+  return { inter, area, matches, prepare, evaluate, wilson };
 })();
 if (typeof module !== 'undefined') module.exports = Logic;
 </script>
 
 <script id="ui">
-/* ---------- page ---------- */
 (function () {
   if (typeof document === 'undefined') return;
   const D = Logic.prepare(JSON.parse(document.getElementById('data').textContent));
   const $ = id => document.getElementById(id);
   const fmt = (v, d) => v.toFixed(d === undefined ? 2 : d);
   const pct = (a, b) => b ? (100 * a / b).toFixed(1) + '%' : '-';
+  const p0 = x => (100 * x).toFixed(0) + '%';
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const STATUS = { caught: ['✓', 'Caught'], wrong: ['⚠', 'Caught, wrong place'], missed: ['✗', 'Missed'], false: ['!', 'False alarm'], correct: ['✓', 'Correct'] };
-  const state = { cut: 0, rule: 'overlap', filter: 'all', cls: '', sort: 'score_desc', q: '', view: 'gallery', shown: 48, open: -1, tsort: ['score', -1] };
-  let M = null, list = [];
-  const curve = Logic.curve(D), hist = Logic.histogram(D, 32), AUC = Logic.auc(curve);
-  const scores = D.pictures.map(p => p.score);
-  const lo = Math.min.apply(null, scores), hi = Math.max.apply(null, scores);
+  const STATUS = { caught: ['✓', 'TP right place'], wrong: ['⚠', 'TP wrong place'], missed: ['✗', 'FN'], false: ['!', 'FP'], correct: ['✓', 'TN'] };
+  const state = { rule: 'overlap', filter: 'all', cls: '', sort: 'score_desc', q: '', view: 'gallery', shown: 48, open: -1, tsort: ['score', -1] };
+  let M = null, list = [], nav = [];
 
   $('title').textContent = D.meta.title;
-  $('sub').textContent = D.meta.subtitle;
+  $('sub').innerHTML = D.meta.subtitle.split(' | ').map(x => '<span class="chip">' + esc(x) + '</span>').join('');
   document.title = D.meta.title;
-  $('how').innerHTML = '<b>How to read this page.</b> The <b>score</b> of a picture is the largest error the model found in it. ' +
-    'Pictures in the <b>defect</b> folder are the ones that should be flagged, pictures in the <b>okay</b> folder should not. ' +
-    'Move the cutoff: a lower cutoff catches more defects and gives more false alarms. ' +
-    'A <b>predicted box is correct</b> when a labelled defect (not defect_1 to defect_4) lies in its region, and a <b>labelled defect is found</b> when a predicted box has it in its region; the match rule above says what "in its region" means. ' +
-    '<span class="muted">Chance that a random defect picture scores above a random okay picture: <b>' + (100 * AUC).toFixed(0) + '%</b> (50% = no better than a coin, 100% = perfect).</span>';
 
   /* controls */
-  const cut = $('cut');
-  cut.min = (Math.floor(lo * 1000) / 1000).toFixed(3); cut.max = (Math.ceil(hi * 1000) / 1000).toFixed(3);
-  [1, 5, 10].forEach(p => {
-    const b = document.createElement('button'); b.textContent = p + '% false alarms'; b.dataset.p = p;
-    b.title = 'Set the cutoff where about ' + p + '% of the okay pictures are flagged';
-    b.addEventListener('click', () => setCut(Logic.cutForFalseAlarm(D, p)));
-    $('presets').appendChild(b);
-  });
-  cut.addEventListener('input', () => setCut(parseFloat(cut.value), true));
-  $('rule').addEventListener('change', e => { state.rule = e.target.value; schedule(); });
-  function setCut(v, fromSlider) {
-    state.cut = v; if (!fromSlider) cut.value = v;
-    $('cutv').textContent = fmt(v, 3);
-    schedule();
+  const CFG = D.meta.settings || {};
+  const imgSrc = p => D.images[p.heat !== undefined ? p.heat : p.img];      // the heat map picture (plain picture when no box passes min_box_score)
+  function showPage(p) {
+    $('page-stats').hidden = p !== 'stats'; $('page-pics').hidden = p !== 'pics';
+    $('nav-stats').setAttribute('aria-pressed', p === 'stats'); $('nav-pics').setAttribute('aria-pressed', p === 'pics');
+    try { history.replaceState(null, '', p === 'pics' ? '#pictures' : '#statistics'); } catch (e) {}
+    window.scrollTo(0, 0);
   }
+  $('nav-stats').addEventListener('click', () => showPage('stats'));
+  $('nav-pics').addEventListener('click', () => showPage('pics'));
+  if (location.hash === '#pictures') showPage('pics');
+  $('rule').addEventListener('change', e => { state.rule = e.target.value; schedule(); });
   let pending = false;
-  function schedule() { if (!pending) { pending = true; requestAnimationFrame(() => { pending = false; renderAll(); }); } }
+  function schedule() { if (!pending) { pending = true; setTimeout(() => { pending = false; renderAll(); }, 0); } }
 
   /* tooltip */
   const tip = $('tip');
@@ -318,90 +321,82 @@ if (typeof module !== 'undefined') module.exports = Logic;
 
   /* charts */
   function svgOpen(w, h, label) { return '<svg viewBox="0 0 ' + w + ' ' + h + '" width="100%" role="img" aria-label="' + esc(label) + '" style="display:block">'; }
-  function renderHisto() {
-    const W = 560, H = 270, L = 44, R = 10, T = 10, B = 40, iw = W - L - R, ih = H - T - B;
-    const pOk = hist.ok.map(v => v / hist.nOk), pDf = hist.df.map(v => v / hist.nDef);
-    const ymax = Math.max(0.05, Math.max.apply(null, pOk.concat(pDf))), y = v => T + ih - v / ymax * ih;
-    const xs = v => L + (v - hist.lo) / (hist.hi - hist.lo || 1) * iw, bw = iw / hist.ok.length;
-    let s = svgOpen(W, H, 'Histogram of picture scores for okay and defect pictures');
-    for (let i = 0; i <= 4; i++) { const v = ymax * i / 4, yy = y(v); s += '<line class="gl" x1="' + L + '" x2="' + (W - R) + '" y1="' + yy + '" y2="' + yy + '"/><text x="' + (L - 6) + '" y="' + (yy + 4) + '" text-anchor="end">' + (100 * v).toFixed(0) + '%</text>'; }
-    for (let i = 0; i < hist.ok.length; i++) {
-      const x0 = L + i * bw, a = pOk[i], d = pDf[i];
-      s += '<rect data-i="' + i + '" x="' + (x0 + 1) + '" y="' + y(a) + '" width="' + Math.max(1, bw / 2 - 1.5) + '" height="' + (T + ih - y(a)) + '" rx="2" fill="var(--okay)"/>';
-      s += '<rect data-i="' + i + '" x="' + (x0 + bw / 2 + .5) + '" y="' + y(d) + '" width="' + Math.max(1, bw / 2 - 1.5) + '" height="' + (T + ih - y(d)) + '" rx="2" fill="var(--defect)"/>';
-      s += '<rect data-i="' + i + '" class="hit" x="' + x0 + '" y="' + T + '" width="' + bw + '" height="' + ih + '" fill="transparent"/>';
-    }
-    s += '<line class="ax" x1="' + L + '" x2="' + (W - R) + '" y1="' + (T + ih) + '" y2="' + (T + ih) + '"/>';
-    for (let i = 0; i <= 5; i++) { const v = hist.lo + (hist.hi - hist.lo) * i / 5; s += '<text x="' + xs(v) + '" y="' + (H - 20) + '" text-anchor="middle">' + v.toFixed(2) + '</text>'; }
-    s += '<text x="' + (L + iw / 2) + '" y="' + (H - 3) + '" text-anchor="middle">score of the picture (largest error)</text>';
-    const cx = xs(Math.min(hist.hi, Math.max(hist.lo, state.cut)));
-    s += '<line x1="' + cx + '" x2="' + cx + '" y1="' + T + '" y2="' + (T + ih) + '" stroke="var(--pred)" stroke-width="2.5"/>';
-    $('histo').innerHTML = s + '</svg>';
-    $('histo-leg').innerHTML = '<span><span class="sw" style="background:var(--okay)"></span>okay pictures (' + hist.nOk + ')</span><span><span class="sw" style="background:var(--defect)"></span>defect pictures (' + hist.nDef + ')</span><span><span class="sw" style="background:var(--pred)"></span>cutoff</span>';
-    $('histo').querySelectorAll('.hit').forEach(r => {
-      const i = +r.dataset.i;
-      r.addEventListener('mousemove', e => showTip(e, '<b>score ' + (hist.lo + i * hist.w).toFixed(2) + ' to ' + (hist.lo + (i + 1) * hist.w).toFixed(2) + '</b><br>okay: ' + hist.ok[i] + ' pictures (' + (100 * hist.ok[i] / hist.nOk).toFixed(1) + '%)<br>defect: ' + hist.df[i] + ' pictures (' + (100 * hist.df[i] / hist.nDef).toFixed(1) + '%)'));
-      r.addEventListener('mouseleave', hideTip);
+  /* at a glance */
+  function donut(id, parts, big, small, label) {
+    const total = parts.reduce((s, p) => s + p.v, 0), R = 52, C = 2 * Math.PI * R;
+    let s = '<svg viewBox="0 0 140 140" width="100%" style="max-width:210px;display:block;margin:0 auto" role="img" aria-label="' + esc(label) + '">';
+    s += '<circle cx="70" cy="70" r="' + R + '" fill="none" stroke="var(--grid)" stroke-width="24"/>';
+    let off = 0, labels = '';
+    parts.forEach((p, i) => {
+      if (p.v <= 0 || !total) return;
+      const len = p.v / total * C, gap = Math.min(2, len * 0.2);
+      s += '<circle class="seg" data-i="' + i + '" cx="70" cy="70" r="' + R + '" fill="none" stroke="' + p.c + '" stroke-width="24" stroke-dasharray="' + (len - gap) + ' ' + (C - len + gap) + '" stroke-dashoffset="' + (-off) + '" transform="rotate(-90 70 70)"/>';
+      if (p.v / total >= 0.07) {
+        const a = (off + len / 2) / C * 2 * Math.PI - Math.PI / 2;
+        labels += '<text class="slice" stroke="' + p.c + '" x="' + (70 + R * Math.cos(a)).toFixed(1) + '" y="' + (70 + R * Math.sin(a) + 3.5).toFixed(1) + '" text-anchor="middle">' + (100 * p.v / total).toFixed(1) + '%</text>';
+      }
+      off += len;
     });
-  }
-  function renderRoc() {
-    const W = 460, H = 300, L = 48, R = 12, T = 10, B = 44, iw = W - L - R, ih = H - T - B;
-    const x = v => L + v * iw, y = v => T + ih - v * ih;
-    let s = svgOpen(W, H, 'Trade-off curve: okay pictures flagged against defect pictures caught');
-    for (let i = 0; i <= 4; i++) { const v = i / 4; s += '<line class="gl" x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '"/><text x="' + (L - 6) + '" y="' + (y(v) + 4) + '" text-anchor="end">' + (100 * v).toFixed(0) + '%</text>'; s += '<text x="' + x(v) + '" y="' + (T + ih + 16) + '" text-anchor="middle">' + (100 * v).toFixed(0) + '%</text>'; }
-    s += '<line class="ax" x1="' + L + '" x2="' + L + '" y1="' + T + '" y2="' + (T + ih) + '"/><line class="ax" x1="' + L + '" x2="' + (W - R) + '" y1="' + (T + ih) + '" y2="' + (T + ih) + '"/>';
-    s += '<line x1="' + x(0) + '" y1="' + y(0) + '" x2="' + x(1) + '" y2="' + y(1) + '" stroke="var(--line)" stroke-dasharray="4 4"/>';
-    const pts = curve.slice().sort((a, b) => a.fa - b.fa || a.tp - b.tp);
-    s += '<polyline fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" points="' + pts.map(p => x(p.fa).toFixed(1) + ',' + y(p.tp).toFixed(1)).join(' ') + '"/>';
-    s += '<text x="' + (L + iw / 2) + '" y="' + (H - 4) + '" text-anchor="middle">okay pictures flagged (false alarms)</text>';
-    s += '<text transform="translate(12 ' + (T + ih / 2) + ') rotate(-90)" text-anchor="middle">defect pictures caught</text>';
-    const fa = M.falseAlarm / Math.max(1, M.nOk), tp = M.caught / Math.max(1, M.nDef);
-    s += '<circle cx="' + x(fa) + '" cy="' + y(tp) + '" r="7" fill="var(--pred)" stroke="var(--surface)" stroke-width="2"/>';
-    s += '<rect id="roc-hit" x="' + L + '" y="' + T + '" width="' + iw + '" height="' + ih + '" fill="transparent"/>';
-    $('roc').innerHTML = s + '</svg>';
-    const hit = $('roc-hit');
-    hit.addEventListener('mousemove', e => {
-      const r = hit.getBoundingClientRect(), fx = (e.clientX - r.left) / r.width;
-      let best = pts[0]; pts.forEach(p => { if (Math.abs(p.fa - fx) < Math.abs(best.fa - fx)) best = p; });
-      showTip(e, '<b>cutoff ' + best.cut.toFixed(3) + '</b><br>false alarms ' + (100 * best.fa).toFixed(1) + '%<br>defect pictures caught ' + (100 * best.tp).toFixed(1) + '%');
+    s += labels + '<text class="dbig" x="70" y="70" text-anchor="middle" style="font-size:22px">' + big + '</text><text class="dsm" x="70" y="86" text-anchor="middle">' + small + '</text></svg>';
+    $(id).innerHTML = s;
+    $(id).querySelectorAll('.seg').forEach(c => {
+      const p = parts[+c.dataset.i];
+      c.addEventListener('mousemove', e => showTip(e, '<b>' + esc(p.l) + '</b><br>' + p.v + ' of ' + total + ' (' + pct(p.v, total) + ')'));
+      c.addEventListener('mouseleave', hideTip);
     });
-    hit.addEventListener('mouseleave', hideTip);
-    hit.addEventListener('click', e => {
-      const r = hit.getBoundingClientRect(), fx = (e.clientX - r.left) / r.width;
-      let best = pts[0]; pts.forEach(p => { if (Math.abs(p.fa - fx) < Math.abs(best.fa - fx)) best = p; });
-      setCut(best.cut);
-    });
+    $(id.replace('pie', 'lg')).innerHTML = parts.map(p => '<li><span class="sw" style="background:' + p.c + '"></span>' + esc(p.l) + ': <b>' + p.v + '</b></li>').join('');
   }
-  function renderKpis() {
-    const cards = [
-      ['Defect pictures caught', M.caught + ' / ' + M.nDef, pct(M.caught, M.nDef) + ' of the defect pictures'],
-      ['Caught in the right place', M.caughtRight + ' / ' + M.caught, 'a predicted box has a labelled defect in its region'],
-      ['Okay pictures flagged', M.falseAlarm + ' / ' + M.nOk, pct(M.falseAlarm, M.nOk) + ' false alarms'],
-      ['Labelled defects found', M.labFound + ' / ' + M.labTot, pct(M.labFound, M.labTot) + ' of the labelled boxes'],
-      ['Predicted boxes correct', M.boxesHit + ' / ' + M.boxes, pct(M.boxesHit, M.boxes) + ' have a labelled defect in their region']
-    ];
-    $('kpis').innerHTML = cards.map(c => '<div class="kpi"><div class="t">' + c[0] + '</div><div class="v">' + c[1] + '</div><div class="s">' + c[2] + '</div></div>').join('');
-  }
-  function renderConf() {
-    const tn = M.nOk - M.falseAlarm, fn = M.nDef - M.caught;
-    $('conf').innerHTML = '<thead><tr><th></th><th class="num">flagged</th><th class="num">not flagged</th><th class="num">total</th></tr></thead><tbody>' +
-      '<tr><th>defect pictures</th><td>' + M.caught + ' caught (' + M.caughtRight + ' in the right place)</td><td>' + fn + ' missed</td><td>' + M.nDef + '</td></tr>' +
-      '<tr><th>okay pictures</th><td>' + M.falseAlarm + ' false alarms</td><td>' + tn + ' correct</td><td>' + M.nOk + '</td></tr></tbody>';
-  }
-  function renderClasses() {
+  const p1 = x => (100 * x).toFixed(1) + '%';
+  function renderGlance() {
+    const tn = M.nOk - M.falseAlarm, ci1 = Logic.wilson(M.caught, M.nDef), ci2 = Logic.wilson(tn, M.nOk), ci4 = Logic.wilson(M.labFound, M.labTot);
+    const kp = (t, a, b, c, ci) => '<div class="kpi" style="--c:' + c + '"><div class="t">' + t + '</div><div class="v">' + pct(a, b) + '</div><div class="s">' + a + ' / ' + b + ' &middot; 95% CI ' + p1(ci[0]) + ' to ' + p1(ci[1]) + '</div></div>';
+    $('kpis').innerHTML =
+      kp('Sensitivity', M.caught, M.nDef, 'var(--good)', ci1) +
+      kp('Specificity', tn, M.nOk, 'var(--good)', ci2) +
+      kp('Labelled defects found', M.labFound, M.labTot, 'var(--good)', ci4);
+    donut('pie-def', [{ l: 'TP, box on a labelled defect', v: M.caughtRight, c: 'var(--good)' }, { l: 'TP, no box on a labelled defect', v: M.caught - M.caughtRight, c: 'var(--warn)' }, { l: 'FN, missed', v: M.nDef - M.caught, c: 'var(--bad)' }],
+      String(M.nDef), 'pictures', 'Defect pictures: ' + M.caughtRight + ' TP with a box on a defect, ' + (M.caught - M.caughtRight) + ' TP elsewhere, ' + (M.nDef - M.caught) + ' FN');
+    donut('pie-ok', [{ l: 'TN, not flagged', v: tn, c: 'var(--good)' }, { l: 'FP, flagged', v: M.falseAlarm, c: 'var(--bad)' }],
+      String(M.nOk), 'pictures', 'Okay pictures: ' + tn + ' TN, ' + M.falseAlarm + ' FP');
     const rows = D.classes.map(c => [c, M.byClass[c]]).sort((a, b) => b[1].total - a[1].total);
-    $('classes').innerHTML = rows.length ? rows.map(r => {
+    $('bars-cls').innerHTML = rows.length ? rows.map(r => {
       const f = r[1].found, t = r[1].total, w = t ? 100 * f / t : 0;
-      return '<div class="bar"><span class="nm">' + esc(r[0]) + '</span><div class="track" role="img" aria-label="' + esc(r[0]) + ': ' + f + ' of ' + t + ' found"><div class="fill" style="width:' + w + '%"></div></div><span class="ct">' + f + ' of ' + t + ' found (' + w.toFixed(0) + '%)</span></div>';
-    }).join('') : '<p class="muted">No labelled defect classes in this data.</p>';
+      return '<div class="bar" style="grid-template-columns:96px 1fr"><span class="nm">' + esc(r[0]) + '</span><div><div class="track" role="img" aria-label="' + esc(r[0]) + ': ' + f + ' of ' + t + ' found"><div class="fill" style="width:' + w + '%;background:var(--good)"></div></div><span class="ct"><b>' + pct(f, t) + '</b> &middot; ' + f + ' of ' + t + ' found</span></div></div>';
+    }).join('') : '';
   }
 
+  /* settings behind the results */
+  function renderSettings() {
+    const has = v => v !== undefined && v !== null;
+    const row = (key, val, who) => '<tr><td><code>' + key + '</code></td><td class="v">' + val + '</td><td><span class="tag">' + who + '</span></td></tr>';
+    $('settab').innerHTML = '<thead><tr><th>config.yaml</th><th>Value</th><th>Set by</th></tr></thead><tbody>' +
+      row('min_box_score', has(CFG.min_box_score) ? CFG.min_box_score : 'not set', 'you') +
+      row('pixelwise_threshold', has(CFG.pixelwise_threshold) ? CFG.pixelwise_threshold : '?', 'you') +
+      row('heatmap_scaling_factor', has(CFG.heatmap_scaling_factor) ? CFG.heatmap_scaling_factor : '?', './run.sh after the fit') +
+      row('heatmap_floor', has(CFG.heatmap_floor) ? CFG.heatmap_floor : '?', './run.sh after the fit') +
+      '</tbody>';
+  }
+
+  /* definitions */
+  function renderAbout() {
+    const k = D.meta.checks || {};
+    const nLab = D.pictures.reduce((s, p) => s + p.defLabels.length, 0);
+    const cls = D.classes.map(c => c + ' ' + D.pictures.reduce((s, p) => s + p.defLabels.filter(l => l.c === c).length, 0)).join(' &middot; ');
+    const r = (a, b, c) => '<tr><td><b>' + a + '</b></td><td>' + b + '</td><td class="num">' + (c === undefined ? '' : c) + '</td></tr>';
+    $('about-body').innerHTML =
+      '<table class="defs"><thead><tr><th>Data check</th><th></th><th class="num">Value</th></tr></thead><tbody>' +
+      r('Labelled defects', cls, nLab) +
+      r('Test pictures also in the memory bank', esc(k.bank_data || ''), (k.overlap === undefined || k.overlap === null) ? 'not checked' : k.overlap) +
+      r('Pictures without a label file', '', k.missing_labels || 0) + r('Box files without a picture', '', k.skipped || 0) +
+      '</tbody></table>';
+    $('banner').innerHTML = (k.overlap > 0) ? '<div class="warnbar"><b>' + k.overlap + '</b> test pictures are also in the memory bank data (' + esc(k.bank_data || '') + ')</div>' : '';
+  }
   /* picture browser */
   const counts = () => { const c = { all: M.per.length, caught: 0, wrong: 0, missed: 0, false: 0, correct: 0 }; M.per.forEach(r => c[r.status]++); return c; };
   function renderChips() {
     const c = counts();
-    const defs = [['all', 'All'], ['caught', 'Caught, right place'], ['wrong', 'Caught, wrong place'], ['missed', 'Missed defects'], ['false', 'False alarms'], ['correct', 'Correct okay']];
-    $('chips').innerHTML = defs.map(d => '<button data-f="' + d[0] + '" aria-pressed="' + (state.filter === d[0]) + '">' + d[1] + ' (' + c[d[0]] + ')</button>').join(' ');
+    const defs = [['all', 'All'], ['caught', 'TP right place'], ['wrong', 'TP wrong place'], ['missed', 'FN'], ['false', 'FP'], ['correct', 'TN']];
+    $('chips').innerHTML = defs.map(d => '<button data-f="' + d[0] + '" aria-pressed="' + (state.filter === d[0]) + '">' + d[1] + '</button>').join(' ');
     $('chips').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { state.filter = b.dataset.f; state.shown = 48; renderBrowser(); }));
   }
   function rows() {
@@ -418,14 +413,15 @@ if (typeof module !== 'undefined') module.exports = Logic;
     let s = '<svg viewBox="0 0 ' + p.w + ' ' + p.h + '" preserveAspectRatio="none" aria-hidden="true">';
     if (o.marks) p.markLabels.forEach(l => { s += '<rect x="' + l.x1 + '" y="' + l.y1 + '" width="' + (l.x2 - l.x1) + '" height="' + (l.y2 - l.y1) + '" fill="none" stroke="#c9d1db" stroke-opacity=".8" stroke-width="1.5" stroke-dasharray="6 5" vector-effect="non-scaling-stroke"/>'; });
     if (o.labels) p.defLabels.forEach((l, i) => { s += '<rect x="' + l.x1 + '" y="' + l.y1 + '" width="' + (l.x2 - l.x1) + '" height="' + (l.y2 - l.y1) + '" fill="none" stroke="var(--label)" stroke-width="2.5" vector-effect="non-scaling-stroke"/>'; });
-    if (o.preds) r.active.forEach(b => { s += '<rect x="' + b.x1 + '" y="' + b.y1 + '" width="' + (b.x2 - b.x1) + '" height="' + (b.y2 - b.y1) + '" fill="' + (b.ok ? 'var(--pred)' : 'none') + '" fill-opacity=".10" stroke="var(--pred)" stroke-width="2.5"' + (b.ok ? '' : ' stroke-dasharray="3 4"') + ' vector-effect="non-scaling-stroke"/>'; });
+    if (o.preds) r.active.forEach(b => { s += '<rect x="' + b.x1 + '" y="' + b.y1 + '" width="' + (b.x2 - b.x1) + '" height="' + (b.y2 - b.y1) + '" fill="' + (b.ok ? 'var(--pred)' : 'none') + '" fill-opacity=".10" stroke="var(--pred)" stroke-width="2.5"' + (b.ok ? '' : ' stroke-dasharray="3 4"') + ' vector-effect="non-scaling-stroke"/>' +
+      '<text x="' + (b.x1 + 5) + '" y="' + (b.y1 + p.w * 0.04) + '" style="font-size:' + (p.w * 0.04) + 'px;font-weight:700" fill="#fff" stroke="var(--pred)" stroke-width="' + (p.w * 0.008) + '" paint-order="stroke" stroke-linejoin="round">' + fmt(b.score, 2) + '</text>'; });
     return s + '</svg>';
   }
   function card(r) {
     const st = STATUS[r.status], p = r.p;
-    return '<button class="card" data-i="' + p.i + '"><div class="thumb"><img loading="lazy" alt="" src="' + D.images[p.img] + '">' + overlay(r) + '</div>' +
+    return '<button class="card" data-i="' + p.i + '"><div class="thumb"><img loading="lazy" alt="" src="' + imgSrc(p) + '">' + overlay(r) + '</div>' +
       '<div class="cap"><div class="nm">' + esc(p.name) + '</div><span class="badge">' + st[0] + ' ' + st[1] + '</span>score ' + fmt(p.score) + ' &middot; ' + r.active.length + ' boxes' +
-      (p.defLabels.length ? ' &middot; ' + r.found + '/' + p.defLabels.length + ' labelled found' : '') + '</div></button>';
+      (p.defLabels.length ? ' &middot; ' + r.found + '/' + p.defLabels.length + ' labels found' : '') + '</div></button>';
   }
   function renderTable() {
     const cols = [['name', 'Picture', false], ['group', 'Group', false], ['score', 'Score', true], ['boxes', 'Boxes', true], ['lab', 'Labelled defects', true], ['found', 'Found', true], ['status', 'Result', false]];
@@ -439,7 +435,7 @@ if (typeof module !== 'undefined') module.exports = Logic;
   }
   function renderBrowser() {
     renderChips();
-    list = rows();
+    list = rows(); nav = list;
     $('count').textContent = list.length + ' pictures';
     const gal = state.view === 'gallery';
     $('gallery').hidden = !gal; $('tablewrap').hidden = gal; $('more').hidden = !(gal && list.length > state.shown);
@@ -462,32 +458,35 @@ if (typeof module !== 'undefined') module.exports = Logic;
   function openViewer(i) {
     state.open = i; const r = M.per[i], p = r.p, st = STATUS[r.status];
     $('v-title').textContent = p.name + '  |  ' + st[0] + ' ' + st[1] + '  |  score ' + fmt(p.score, 3); $('v-title').title = $('v-title').textContent;
-    $('v-img').innerHTML = '<img alt="" src="' + D.images[p.img] + '">' + overlay(r, V);
+    $('v-img').innerHTML = '<img alt="" src="' + imgSrc(p) + '">' + overlay(r, V);
     const lab = p.defLabels.map((l, k) => '<li>' + esc(l.c) + ' (' + l.x1 + ',' + l.y1 + ',' + l.x2 + ',' + l.y2 + ') ' + (r.foundFlags[k] ? '<b>✓ found</b>' : '<b>✗ missed</b>') + '</li>').join('');
     const prs = r.active.map(b => '<li>score ' + fmt(b.score) + ' (' + b.x1 + ',' + b.y1 + ',' + b.x2 + ',' + b.y2 + ') ' + (b.ok ? '<b>✓ correct</b>' : '<b>✗ wrong</b>') + '</li>').join('');
     $('v-side').innerHTML =
-      '<p class="small muted" style="margin-top:0">Group: <b>' + p.group + '</b>. Picture ' + p.w + ' x ' + (D.meta.full_height || p.h) + ' px; the part below the chain is cut.</p>' +
-      '<label class="small"><input type="checkbox" id="tg-l" ' + (V.labels ? 'checked' : '') + '> labelled defects (green)</label><br>' +
-      '<label class="small"><input type="checkbox" id="tg-m" ' + (V.marks ? 'checked' : '') + '> defect_1 to defect_4 labels (dashed)</label><br>' +
-      '<label class="small"><input type="checkbox" id="tg-p" ' + (V.preds ? 'checked' : '') + '> predicted boxes (orange; dotted = wrong)</label>' +
+      '<p class="small muted" style="margin-top:0">' + p.group + ' &middot; ' + p.w + ' x ' + (D.meta.full_height || p.h) + ' px</p>' +
+      '<label class="small"><input type="checkbox" id="tg-l" ' + (V.labels ? 'checked' : '') + '> labels</label><br>' +
+      '<label class="small"><input type="checkbox" id="tg-m" ' + (V.marks ? 'checked' : '') + '> defect_1 to defect_4 marks</label><br>' +
+      '<label class="small"><input type="checkbox" id="tg-p" ' + (V.preds ? 'checked' : '') + '> predicted boxes</label>' +
       '<h2 style="margin-top:14px">Labelled defects</h2>' + (lab ? '<ul class="small">' + lab + '</ul>' : '<p class="muted small">None.</p>') +
-      '<h2>Predicted boxes (' + r.active.length + ', ' + r.hit + ' correct)</h2>' + (prs ? '<ul class="small">' + prs + '</ul>' : '<p class="muted small">No box passes the cutoff.</p>') +
-      '<p class="small muted">Marks: ' + p.markLabels.length + ' defect_1 to defect_4 labels.</p>';
+      '<h2>Predicted boxes (' + r.active.length + ', ' + r.hit + ' correct)</h2>' + (prs ? '<ul class="small">' + prs + '</ul>' : '<p class="muted small">0</p>') +
+      '<p class="small muted">defect_1 to defect_4 marks: ' + p.markLabels.length + '</p>';
     ['l', 'm', 'p'].forEach(k => $('tg-' + k).addEventListener('change', e => { V[{ l: 'labels', m: 'marks', p: 'preds' }[k]] = e.target.checked; openViewer(state.open); }));
     if (!$('viewer').open) $('viewer').showModal();
   }
   $('v-close').addEventListener('click', () => $('viewer').close());
-  function step(d) { if (!list.length) return; const pos = list.findIndex(r => r.p.i === state.open); const n = list[(pos + d + list.length) % list.length]; openViewer(n.p.i); }
+  function step(d) { if (!nav.length) return; const pos = nav.findIndex(r => r.p.i === state.open); const n = nav[(pos + d + nav.length) % nav.length]; openViewer(n.p.i); }
   $('v-prev').addEventListener('click', () => step(-1)); $('v-next').addEventListener('click', () => step(1));
   document.addEventListener('keydown', e => { if (!$('viewer').open) return; if (e.key === 'ArrowLeft') step(-1); else if (e.key === 'ArrowRight') step(1); });
   $('viewer').addEventListener('click', e => { if (e.target === $('viewer')) $('viewer').close(); });
 
+
   function renderAll() {
-    M = Logic.evaluate(D, state.cut, state.rule);
-    renderKpis(); renderHisto(); renderRoc(); renderConf(); renderClasses(); renderBrowser();
+    M = Logic.evaluate(D, state.rule);
+    renderGlance(); renderBrowser();
     if ($('viewer').open && state.open >= 0) openViewer(state.open);
   }
-  setCut(Logic.cutForFalseAlarm(D, 5));
+  renderSettings();
+  renderAbout();
+  schedule();
 })();
 </script>
 </body>

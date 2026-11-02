@@ -30,6 +30,7 @@ model:
     blur_sigma: 4
     pixelwise_threshold: 0
     visualisation: "heatmap"
+    # min_box_score: 1.25   # optional: predicted boxes whose score (largest error inside the box) is below it are dropped
 
 output:
     checkpoint_dir: "@EXP@/checkpoints"
@@ -37,3 +38,10 @@ output:
     results_dir: "@EXP@/results"
     calibration_pictures: 20
     ng_pictures: 10
+
+# only for ./run.sh --export (ONNX for Triton): where the model is written, its name (a new fit = a new name, an existing model is never overwritten)
+# and which run folder is exported (latest = the newest patchcore_* folder next to this config.yaml)
+export:
+    models_dir: "/jidoka/simulations/jdisk3/jt.cust.anomaly_jade_v3/models"
+    model_name: "PatchCore_v1.0.0"
+    experiment: "latest"

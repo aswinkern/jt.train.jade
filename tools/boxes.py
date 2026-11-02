@@ -3,7 +3,7 @@ Prediction boxes from a heat map, written by run.sh --infer of both methods (jad
 
 A box is a region of the heat map that is not dark blue: the pixels whose colour value (0 = dark blue ... 100 = dark red) is above
 model.pixelwise_threshold are joined (8-neighbours) into regions, and every region becomes one box. There is no other filter, so
-tiny regions are boxes too: use "score" and "area" to filter them. With pixelwise_threshold 0 (or missing) every pixel above the
+tiny regions are boxes too: use "score" and "area" to filter them, or set model.min_box_score (boxes with a lower score are dropped). With pixelwise_threshold 0 (or missing) every pixel above the
 colour floor counts, which for JADE (no floor) is the whole picture: set a pixelwise_threshold to get useful boxes.
 
 The coordinates are in the ORIGINAL picture (the size of the file), like the labels of the training data, not in the size the model saw.
@@ -23,9 +23,10 @@ import cv2
 import numpy as np
 
 
-def boxes_from_value(value, error, thr, orig_hw):
+def boxes_from_value(value, error, thr, orig_hw, min_score=None):
     """value (h, w): colour value 0..1 of the picture as the model saw it. error (h, w): the error map. thr: pixelwise_threshold (0-100) or None.
-    orig_hw: (height, width) of the original picture. Returns the boxes in original pixels."""
+    orig_hw: (height, width) of the original picture. min_score (model.min_box_score, optional): boxes whose score is below it are dropped.
+    Returns the boxes in original pixels."""
     h, w = value.shape
     H0, W0 = orig_hw
     sx, sy = W0 / float(w), H0 / float(h)
@@ -37,8 +38,23 @@ def boxes_from_value(value, error, thr, orig_hw):
         boxes.append({"x1": int(np.floor(x * sx)), "y1": int(np.floor(y * sy)),
                       "x2": int(min(W0, np.ceil((x + bw) * sx))), "y2": int(min(H0, np.ceil((y + bh) * sy))),
                       "score": round(float(error[lab == i].max()), 4), "area": int(round(area * sx * sy))})
+    if min_score is not None:
+        boxes = [bx for bx in boxes if bx["score"] >= min_score]
     boxes.sort(key=lambda b: -b["score"])
     return boxes
+
+
+def keep_mask(value, error, thr, min_score):
+    """(h, w) bool: the pixels of the regions that become boxes (same regions and same min_score filter as boxes_from_value).
+    The heat map is drawn only here, so every coloured region has a box and a score."""
+    mask = (value * 100.0 > (thr or 0)).astype(np.uint8)
+    n, lab = cv2.connectedComponents(mask, connectivity=8)
+    keep = np.zeros(mask.shape, bool)
+    for i in range(1, n):
+        reg = lab == i
+        if min_score is None or float(error[reg].max()) >= min_score:
+            keep |= reg
+    return keep
 
 
 def draw_boxes(img, boxes):

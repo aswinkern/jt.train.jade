@@ -9,7 +9,7 @@ Two methods, one launcher, the same data layout. Both learn what **normal** look
 | Config template | `config_jade.yaml` | `config_patchcore.yaml` |
 | Code | `model/`, `training/`, `inference/`, `tools/` | `patchcore/` |
 | Run saves | `jade_<data>_<date>_<time>/` with `checkpoints/epoch_N.pt` | `patchcore_<data>_<date>_<time>/` with `checkpoints/memory_bank.pt` |
-| Export for Triton | `./run.sh --export` (ONNX) | not built |
+| Export for Triton | `./run.sh --export` (ONNX) | `./run.sh --export` (ONNX, the memory bank is inside) |
 
 ## Use it
 
@@ -49,8 +49,11 @@ It is read like the other colour settings: from the `config.yaml` next to `run.s
 ## Analytics page (labels against prediction boxes)
 
 ```
-python tools/analytics_html.py --labels <folder with okay/ and defect/> --pred <the --out folder of --infer> --out analytics.html
+python tools/analytics_html.py --labels <folder with okay/ and defect/> --pred <the --out folder of --infer> --out analytics.html \
+    [--bank <run folder name>] [--bank-data <the data folder the bank was built from>]
 ```
+
+With `--bank-data` the page states how many test pictures are also in the data the memory bank was built from (it shows a warning if there are any).
 
 One HTML file you open in a browser (no internet needed, the thumbnails are inside, about 7 MB for 434 pictures).
 `--labels` has `<group>/image/` and `<group>/label/` (KITTI labels) for the groups `okay` and `defect`, like `od_train/<component>/`;
@@ -69,5 +72,5 @@ The colours of the heat maps are written into `config.yaml` next to `run.sh`, so
 ## More
 
 - `patchcore/README.md`: PatchCore settings and how its colours are set.
-- `convert.md`: from the ONNX export to a TensorRT engine and Triton (JADE).
+- `convert.md`: from the ONNX export to a TensorRT engine and Triton (JADE and PatchCore). Clients: `triton/triton_client.py` (JADE), `triton/patchcore_client.py` (PatchCore).
 - Weights are not in git. DINOv2: `/jidoka/models/jade/`. PatchCore: see `patchcore/weights/README.md`.

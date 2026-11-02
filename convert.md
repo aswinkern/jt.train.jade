@@ -98,3 +98,30 @@ docker stop jade_triton
 With TensorRT 10.3 and 10.4 an engine built from this model gave **wrong numbers** (about 20 times too large) in our tests, with FP16 and
 with FP32. Compare a few pictures against `./run.sh --infer` before using an engine. The ONNX model served through the ONNX Runtime
 backend of Triton (`platform: "onnxruntime_onnx"` in `config.pbtxt`) gave the same result as `--infer`.
+
+---
+
+# PatchCore
+
+Same steps, with these differences. The model is made by `./run.sh --export` with `method: patchcore` (the `export:` block of `config.yaml`:
+`models_dir`, `model_name`, `experiment`; `latest` = the newest `patchcore_*` run folder). Its output is the raw error map, like JADE's, and the **memory bank is part
+of the model**: a new fit is a new export with a new `model_name`. Client: `triton/patchcore_client.py` (the colour settings are variables at its top).
+
+- **Build the engine in full FP32: no `--fp16`, and `--noTF32`.** The search for the nearest bank patch calculates |q|^2 - 2 q.b + |b|^2, which loses its precision in FP16 and in TF32 (the default of an RTX 30-series GPU for FP32 matrix products).
+- **The batch is 1.** TensorRT joins the chunks of the search back into one distance table and keeps it in memory: 4.2 GB per picture at 518 x 518 (4,225 patches x 245,050 bank patches x 4 bytes). A build with batch 8 asks for 16.6 GB and one with batch 2 for 8.4 GB, and fails on a 12 GB GPU. One picture already keeps the GPU busy, so a bigger batch would not be faster. `--max_batch` of the export is 1 for PatchCore; ONNX Runtime can take a bigger batch (change `max_batch_size` in `config.pbtxt`).
+- A server holding the engine needs about 5 GB of GPU memory, so the GPU cannot be shared with another big job. At 960 x 960 the table is about 12 times bigger: use a smaller `coreset_ratio`.
+- Measured on the RTX 3080 Ti (518 x 518, bank of 245,050 patches): **105 ms per picture through Triton, about 570 pictures per minute** (`--infer` is about 300 per minute).
+
+```bash
+cd /jidoka/simulations/jdisk3/jt.cust.anomaly_jade_v3/models/PatchCore_v1.0.0/Serving_model/1
+
+/usr/src/tensorrt/bin/trtexec --onnx=model.onnx --saveEngine=model.plan --noTF32 \
+  --minShapes=image:1x3x518x518 --optShapes=image:1x3x518x518 --maxShapes=image:1x3x518x518 --memPoolSize=workspace:6000
+```
+
+Right numbers: `patchcore_client.py` on the labelled test gives the same flagged / not flagged as `./run.sh --infer` for every picture and nearly the same scores
+(compare the `boxes/` folders; tools/analytics_html.py on the client output must show the same numbers as on the `--infer` output). Measured with the engine above on the 307 labelled
+test pictures: 0 pictures flagged differently, the same number of boxes on every picture, picture scores differ by 0.0005 at most (the GPU convolutions of `--infer` run in TF32, so
+exact equality is not expected). If the engine gives different
+numbers (as it did for JADE with TensorRT 10.3 and 10.4), serve the ONNX through the ONNX Runtime backend instead: `platform: "onnxruntime_onnx"` in
+`config.pbtxt`, and no `model.plan`.

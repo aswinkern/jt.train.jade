@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Folder report</title>
+<style>
+:root{
+  --bg:#f2f4f8; --surface:#ffffff; --text:#18202c; --muted:#5a6678; --line:#dfe4ec; --grid:#eceff4;
+  --okay:#0072B2; --defect:#E69F00; --label:#009E73; --pred:#D55E00; --accent:#1d4f91; --accent-soft:#e8eff9;
+  --good:#1b8a45; --warn:#6cbf84; --bad:#d63a32; --warn-bg:#fff4e0; --shadow:0 1px 2px rgba(16,28,48,.06),0 4px 14px rgba(16,28,48,.05);
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+html{background:var(--bg);color-scheme:light}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 "Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1320px;margin:0 auto;padding:0 16px 56px}
+header{background:var(--surface);border-bottom:1px solid var(--line);border-top:4px solid var(--accent);margin:0 -16px 20px;padding:20px 16px 16px}
+header .in{max-width:1288px;margin:0 auto}
+.eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--accent)}
+h1{margin:2px 0 8px;font-size:28px;font-weight:700;letter-spacing:-.01em}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{background:var(--grid);border:1px solid var(--line);border-radius:6px;padding:2px 9px;font-size:12.5px;color:var(--muted)}
+h2{margin:0 0 6px;font-size:18px;font-weight:700;letter-spacing:-.005em}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.hint{margin:0 0 12px;color:var(--muted);font-size:13px}
+.nav{display:flex;align-items:center;gap:8px;margin:-6px 0 16px;border-bottom:2px solid var(--line)}
+.nav button{border:0;border-bottom:3px solid transparent;border-radius:0;background:none;padding:10px 18px;font-weight:700;font-size:15px;color:var(--muted);margin-bottom:-2px}
+.nav button[aria-pressed="true"]{background:none;color:var(--accent);border-bottom-color:var(--accent)}
+.nav button:hover{color:var(--accent);border-color:transparent;border-bottom-color:var(--accent)}
+.nav .grow{flex:1}
+.controls .row{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center}
+.controls label{font-weight:600}
+.controls input[type=range]{width:min(420px,70vw);vertical-align:middle;accent-color:var(--accent)}
+.controls output{display:inline-block;min-width:4.5em;font-variant-numeric:tabular-nums;font-weight:650}
+button,select,input[type=search]{font:inherit;color:var(--text);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+button{cursor:pointer}
+button:hover{border-color:var(--accent)}
+button:focus-visible,select:focus-visible,input:focus-visible,.card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:var(--accent)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:6px 0 16px}
+.kpi{border-left:5px solid var(--c,var(--accent));padding:12px 16px;background:#fafbfd;border-radius:10px;border-top:1px solid var(--grid);border-right:1px solid var(--grid);border-bottom:1px solid var(--grid)}
+.kpi .t{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.kpi .v{font-size:32px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.15;margin-top:2px}
+.kpi .v small{font-size:16px;font-weight:600;color:var(--muted)}
+.kpi .s{font-size:13px;color:var(--muted)}
+.verdict{font-size:15px;color:var(--muted)}
+.sec{display:flex;align-items:baseline;gap:10px;margin:0 0 4px}
+.sec .num{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;font-size:13px;font-weight:700}
+.presets{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px 22px;box-shadow:var(--shadow);margin-bottom:18px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:16px;margin-bottom:16px}
+.grid2 .panel{margin-bottom:0}
+svg text{fill:var(--muted);font:12px system-ui,sans-serif}
+svg .ax{stroke:var(--line);stroke-width:1}
+svg .gl{stroke:var(--grid);stroke-width:1}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:6px 0 0;font-size:13px;color:var(--muted)}
+.sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+table{border-collapse:collapse;width:100%}
+th,td{padding:6px 10px;text-align:left;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+th{font-size:12px;color:var(--muted);font-weight:700;white-space:nowrap;text-transform:uppercase;letter-spacing:.04em}
+th.sortable{cursor:pointer;user-select:none}
+th.sortable:hover{color:var(--text)}
+tbody tr.click{cursor:pointer}
+tbody tr.click:hover{background:var(--grid)}
+td.num,th.num{text-align:right}
+.conf td,.conf th{text-align:right}
+.conf td:first-child,.conf th:first-child{text-align:left}
+.bar{display:grid;grid-template-columns:110px 1fr 160px;gap:10px;align-items:center;margin:7px 0}
+.bar .track{height:16px;background:#f3c9c6;border-radius:4px;overflow:hidden}
+.bar .fill{height:100%;background:var(--label)}
+.bar .nm{font-weight:600}
+.bar .ct{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.filters{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;margin-bottom:12px}
+.gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:0 1px 2px rgba(16,28,48,.05);cursor:pointer;display:block;text-align:left;padding:0;color:inherit}
+.card:hover{border-color:var(--accent);box-shadow:0 4px 14px rgba(16,28,48,.12)}
+.card .cap{padding:6px 10px 8px;font-size:12.5px}
+.card .cap .nm{font-weight:600;word-break:break-all}
+.thumb{position:relative;background:#000;line-height:0}
+.thumb img,.thumb svg{width:100%;height:auto;display:block}
+.thumb svg{position:absolute;inset:0;height:100%}
+.badge{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:0 8px;font-size:12px;font-weight:600;margin-right:6px;background:var(--bg)}
+.more{display:block;margin:14px auto 0}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--text);padding:0;width:min(1180px,96vw);max-height:94vh}
+dialog::backdrop{background:rgba(0,0,0,.55)}
+.dlg{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:0}
+.dlg .main{padding:12px;background:#000}
+.dlg .side{padding:14px;overflow:auto;max-height:80vh}
+.dlg .bar2{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 12px;border-bottom:1px solid var(--line)}
+.dlg .bar2 strong{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dlg .bar2 span{flex:none;white-space:nowrap}
+.dlg ul{margin:6px 0;padding-left:18px}
+.tip{position:fixed;pointer-events:none;background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12.5px;box-shadow:0 4px 14px rgba(0,0,0,.25);z-index:20;display:none;white-space:nowrap}
+.how{background:var(--warn-bg);border-radius:10px;padding:10px 14px;font-size:13.5px;margin-bottom:16px}
+.how b{font-weight:650}
+@media (max-width:820px){.dlg{grid-template-columns:1fr}.bar{grid-template-columns:90px 1fr}.bar .ct{grid-column:1 / -1}}
+
+.verdict{line-height:1.55;margin:4px 0 14px}
+.verdict b{font-weight:700}
+.charts4{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}
+.charts4 figure{margin:0;background:#fafbfd;border:1px solid var(--grid);border-radius:12px;padding:14px}
+.charts4 figcaption{font-weight:650;margin-bottom:6px}
+.charts4 figcaption span{display:block;font-weight:400;color:var(--muted);font-size:12.5px}
+.lg{list-style:none;margin:8px 0 0;padding:0;font-size:13.5px}
+.lg li{margin:3px 0}
+svg .dbig{font:700 22px system-ui,sans-serif;fill:var(--text)}
+svg .dsm{font:12px system-ui,sans-serif;fill:var(--muted)}
+svg .slice{font:700 9.5px system-ui,sans-serif;fill:#fff;stroke-width:3.5px;paint-order:stroke;stroke-linejoin:round}
+.exg{margin:0 0 22px}
+.exh{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:2px}
+.exh h3{margin:0;font-size:16px}
+.cls-note{font-size:13px;color:var(--muted)}
+details.more>summary,details.adv>summary{cursor:pointer;font-weight:650;font-size:16px}
+details.adv{display:inline-block;margin-left:6px}
+details.adv>summary{font-size:13.5px;font-weight:600;color:var(--muted)}
+details.adv .box{position:absolute;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:6px;z-index:6;box-shadow:0 4px 14px rgba(0,0,0,.2)}
+.warnbar{background:var(--warn-bg);border:1px solid #e0b45a;border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:14px}
+.about h3{margin:14px 0 4px;font-size:15px}
+.defs td:nth-child(2){color:var(--muted)}
+.defs td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.about ul{margin:4px 0 8px;padding-left:20px}
+.about li{margin:3px 0}
+.range{color:var(--muted);font-size:14px}
+#settab td,#settab th{vertical-align:top}
+#settab td.v{font-weight:700;white-space:nowrap}
+.tag{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:0 8px;font-size:12px;font-weight:600;background:var(--bg);white-space:nowrap}
+code{background:var(--grid);border-radius:4px;padding:0 4px;font-size:.92em}
+
+.kpi .t .tag{margin-left:6px;text-transform:none;letter-spacing:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header><div class="in">
+  <div class="eyebrow">Anomaly detection report</div>
+  <h1 id="title">Folder report</h1>
+  <div class="chips" id="sub"></div>
+</div></header>
+
+<nav class="nav" aria-label="Pages">
+  <button id="nav-stats" aria-pressed="true">Statistics</button>
+  <button id="nav-pics" aria-pressed="false">Pictures</button>
+  <span class="grow"></span>
+  <label class="small">Folder <select id="scope" aria-label="Folder"></select></label>
+  <label class="small" id="bankWrap" hidden><input type="checkbox" id="exBank" checked> exclude pictures already used (memory bank or labelled test)</label>
+</nav>
+
+<main id="page-stats">
+  <div id="banner"></div>
+  <section class="panel" id="glance">
+    <h2 id="gl-title">At a glance</h2>
+    <div class="kpis" id="kpis"></div>
+    <div class="charts4" id="pies">
+      <figure><figcaption>Flagged pictures</figcaption><div id="pie-flag"></div><ul class="lg" id="lg-flag"></ul></figure>
+      <figure id="fig-meas"><figcaption>Correct vs wrong<span>measured, folder name = reference</span></figcaption><div id="pie-meas"></div><ul class="lg" id="lg-meas"></ul></figure>
+      <figure id="fig-est"><figcaption>Correct vs wrong<span>estimated, no reference</span></figcaption><div id="pie-est"></div><ul class="lg" id="lg-est"></ul></figure>
+    </div>
+  </section>
+  <section class="panel" id="folders">
+    <h2>Folders</h2>
+    <table id="ftab"></table>
+  </section>
+  <details class="panel more" id="notes"><summary>Settings and data check</summary>
+    <div style="height:8px"></div>
+    <table id="settab"></table>
+    <div id="check" style="margin-top:16px"></div>
+  </details>
+</main>
+
+<main id="page-pics" hidden>
+  <section class="panel" id="browser">
+    <h2>Pictures</h2>
+    <p class="hint"><span class="sw" style="background:var(--pred)"></span>predicted box with its score</p>
+    <div class="tabs"><button id="tab-gal" aria-pressed="true">Flagged, gallery</button><button id="tab-tab" aria-pressed="false">All, table</button></div>
+    <div class="filters">
+      <label class="small">Sort <select id="sortSel">
+        <option value="score_desc">Score, high to low</option><option value="score_asc">Score, low to high</option><option value="name">Name</option></select></label>
+      <input type="search" id="q" placeholder="Search name" aria-label="Search by name">
+      <span class="muted small" id="count"></span>
+    </div>
+    <div id="gallery" class="gal"></div>
+    <div id="tablewrap" hidden></div>
+    <button class="more" id="more" hidden>Show more</button>
+  </section>
+</main>
+</div>
+
+<dialog id="viewer" aria-label="Picture viewer">
+  <div class="bar2"><strong id="v-title" class="small" title=""></strong>
+    <span><button id="v-prev" aria-label="Previous picture">&larr;</button> <button id="v-next" aria-label="Next picture">&rarr;</button> <button id="v-close">Close</button></span></div>
+  <div class="dlg">
+    <div class="main"><div class="thumb" id="v-img"></div></div>
+    <div class="side" id="v-side"></div>
+  </div>
+</dialog>
+<div class="tip" id="tip"></div>
+
+<script id="data" type="application/json">/*__DATA__*/</script>
+<script id="ui">
+(function () {
+  'use strict';
+  const D = JSON.parse(document.getElementById('data').textContent);
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const fmt = (v, d) => v.toFixed(d === undefined ? 2 : d);
+  const pct = (a, b) => b ? (100 * a / b).toFixed(1) + '%' : '-';
+  const wilson = (k, n) => { if (!n) return [0, 0]; const z = 1.96, p = k / n, d = 1 + z * z / n, c = p + z * z / (2 * n), h = z * Math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)); return [(c - h) / d, (c + h) / d]; };
+  const p1 = x => (100 * x).toFixed(1) + '%';
+  const GOOD = 'var(--good)', BAD = 'var(--bad)', MID = 'var(--warn)', NEU = '#9aa6b8';
+  const REF = D.meta.reference || {};
+  const refOf = p => REF[p.group] || null;                        // 'okay' | 'defect' | null
+  const R = D.meta.rates;                                          // labelled test set: {sens:{k,n}, spec:{k,n}}
+  const state = { scope: 'all', exBank: true, view: 'gallery', sort: 'score_desc', q: '', shown: 48, open: -1 };
+  let nav = [];
+
+  $('title').textContent = D.meta.title;
+  $('sub').innerHTML = D.meta.subtitle.split(' | ').map(x => '<span class="chip">' + esc(x) + '</span>').join('');
+  D.pictures.forEach((p, i) => { p.i = i; p.flagged = p.boxes.length > 0; });
+  D.pictures.forEach(p => { p.dup = !!(p.inBank || p.inTest); });
+  if (D.pictures.some(p => p.dup)) $('bankWrap').hidden = false;
+
+  /* folders */
+  const folders = [...new Set(D.pictures.map(p => p.folder))].sort();
+  const groups = [...new Set(D.pictures.map(p => p.group))].sort();
+  $('scope').innerHTML = '<option value="all">All</option>' + groups.map(g => '<option value="g:' + esc(g) + '">' + esc(g) + ' (all)</option>').join('') + folders.map(f => '<option value="f:' + esc(f) + '">&nbsp;&nbsp;' + esc(f) + '</option>').join('');
+  const inScope = p => (state.scope === 'all' || (state.scope.startsWith('g:') ? p.group === state.scope.slice(2) : p.folder === state.scope.slice(2))) && !(state.exBank && p.dup);
+  const scoped = () => D.pictures.filter(inScope);
+
+  /* estimate for pictures without a reference, from the labelled test rates */
+  function estimate(N, F) {
+    const sens = R.sens.k / R.sens.n, spec = R.spec.k / R.spec.n;
+    const one = (se, sp) => {
+      const fpr = 1 - sp, f = F / N, pi = Math.min(1, Math.max(0, (f - fpr) / (se - fpr)));
+      const tp = se * pi * N, fn = (1 - se) * pi * N, fp = fpr * (1 - pi) * N, tn = sp * (1 - pi) * N;
+      return { pi, tp, fn, fp, tn };
+    };
+    const base = one(sens, spec), lo = wilson(R.sens.k, R.sens.n), lo2 = wilson(R.spec.k, R.spec.n);
+    let wmin = 1e9, wmax = -1;
+    [lo[0], lo[1]].forEach(se => [lo2[0], lo2[1]].forEach(sp => { const e = one(se, sp), w = e.fn + e.fp; wmin = Math.min(wmin, w); wmax = Math.max(wmax, w); }));
+    return Object.assign(base, { wmin, wmax });
+  }
+
+  function donut(id, parts, big, small) {
+    const total = parts.reduce((s, p) => s + p.v, 0), Rr = 52, C = 2 * Math.PI * Rr;
+    let s = '<svg viewBox="0 0 140 140" width="100%" style="max-width:210px;display:block;margin:0 auto" role="img" aria-label="' + esc(small) + '"><circle cx="70" cy="70" r="' + Rr + '" fill="none" stroke="var(--grid)" stroke-width="24"/>';
+    let off = 0, labels = '';
+    parts.forEach(p => {
+      if (p.v <= 0 || !total) return;
+      const len = p.v / total * C, gap = Math.min(2, len * 0.2);
+      s += '<circle cx="70" cy="70" r="' + Rr + '" fill="none" stroke="' + p.c + '" stroke-width="24" stroke-dasharray="' + (len - gap) + ' ' + (C - len + gap) + '" stroke-dashoffset="' + (-off) + '" transform="rotate(-90 70 70)"/>';
+      if (p.v / total >= 0.07) { const a = (off + len / 2) / C * 2 * Math.PI - Math.PI / 2; labels += '<text class="slice" stroke="' + p.c + '" x="' + (70 + Rr * Math.cos(a)).toFixed(1) + '" y="' + (70 + Rr * Math.sin(a) + 3.5).toFixed(1) + '" text-anchor="middle">' + (100 * p.v / total).toFixed(1) + '%</text>'; }
+      off += len;
+    });
+    $(id).innerHTML = s + labels + '<text class="dbig" x="70" y="70" text-anchor="middle" style="font-size:22px">' + big + '</text><text class="dsm" x="70" y="86" text-anchor="middle">' + small + '</text></svg>';
+    $(id.replace('pie', 'lg')).innerHTML = parts.map(p => '<li><span class="sw" style="background:' + p.c + '"></span>' + esc(p.l) + ': <b>' + (p.est ? p.v.toFixed(0) : p.v) + '</b></li>').join('');
+  }
+
+  function renderStats() {
+    const ps = scoped(), N = ps.length, F = ps.filter(p => p.flagged).length;
+    const okR = ps.filter(p => refOf(p) === 'okay'), dfR = ps.filter(p => refOf(p) === 'defect'), un = ps.filter(p => !refOf(p));
+    const fp = okR.filter(p => p.flagged).length, tn = okR.length - fp, tp = dfR.filter(p => p.flagged).length, fn = dfR.length - tp;
+    $('gl-title').textContent = 'At a glance: ' + (state.scope === 'all' ? 'All' : state.scope.slice(2)) + ' (' + N + ' pictures)';
+    const kp = (t, v, s, c, tag) => '<div class="kpi" style="--c:' + c + '"><div class="t">' + t + (tag ? ' <span class="tag">' + tag + '</span>' : '') + '</div><div class="v">' + v + '</div><div class="s">' + s + '</div></div>';
+    const T = (k, n) => { const c = wilson(k, n); return k + ' / ' + n + ' &middot; 95% CI ' + p1(c[0]) + ' to ' + p1(c[1]); };
+    let kpis = kp('Pictures', N, F + ' flagged (' + pct(F, N) + ')', 'var(--accent)');
+    kpis += kp('Sensitivity', pct(R.sens.k, R.sens.n), T(R.sens.k, R.sens.n), GOOD, 'labelled test set');
+    kpis += kp('Specificity', pct(R.spec.k, R.spec.n), T(R.spec.k, R.spec.n), GOOD, 'labelled test set');
+    $('kpis').innerHTML = kpis;
+    donut('pie-flag', [{ l: 'Flagged', v: F, c: '#1d4f91' }, { l: 'Not flagged', v: N - F, c: '#aab4c4' }], String(N), 'pictures');
+    const nRef = okR.length + dfR.length;
+    $('fig-meas').hidden = !nRef;
+    if (nRef) donut('pie-meas', [{ l: 'Okay, not flagged (correct)', v: tn, c: GOOD }, { l: 'Defect, flagged (correct)', v: tp, c: MID }, { l: 'Okay, flagged (wrong)', v: fp, c: BAD }, { l: 'Defect, not flagged (wrong)', v: fn, c: '#8e1b16' }], String(nRef), 'pictures');
+    const Nu = un.length;
+    $('fig-est').hidden = !Nu;
+    if (Nu) {
+      const Fu = un.filter(p => p.flagged).length, e = estimate(Nu, Fu);
+      donut('pie-est', [{ l: 'Correct, estimated', v: e.tp + e.tn, c: GOOD, est: 1 }, { l: 'Wrong, estimated', v: e.fn + e.fp, c: BAD, est: 1 }], String(Nu), 'pictures');
+      $('lg-est').innerHTML += '<li class="muted">flagged ' + Fu + ' &middot; est. defects ' + e.tp.toFixed(0) + '+' + e.fn.toFixed(0) + ' &middot; wrong range ' + e.wmin.toFixed(0) + ' to ' + e.wmax.toFixed(0) + '</li>';
+    }
+    $('pies').style.gridTemplateColumns = 'repeat(' + (1 + (nRef ? 1 : 0) + (Nu ? 1 : 0)) + ',minmax(250px,1fr))';
+    renderFolders();
+  }
+
+  function renderFolders() {
+    const rows = folders.map(f => {
+      const ps = D.pictures.filter(p => p.folder === f && !(state.exBank && p.dup)), n = ps.length, fl = ps.filter(p => p.flagged).length, rf = refOf(ps[0] || { group: f.split('/')[0] });
+      const corr = rf === 'okay' ? n - fl : rf === 'defect' ? fl : null;
+      return { f, n, fl, rf, corr };
+    });
+    $('ftab').innerHTML = '<thead><tr><th>Folder</th><th>Reference</th><th class="num">Pictures</th><th class="num">Flagged</th><th class="num">Flagged %</th></tr></thead><tbody>' + rows.map(r =>
+      '<tr class="click" data-f="' + esc(r.f) + '"><td>' + esc(r.f) + '</td><td>' + (r.rf || 'none') + '</td><td class="num">' + r.n + '</td><td class="num">' + r.fl + '</td><td class="num">' + pct(r.fl, r.n) + '</td></tr>').join('') + '</tbody>';
+    $('ftab').querySelectorAll('tr.click').forEach(tr => tr.addEventListener('click', () => { state.scope = 'f:' + tr.dataset.f; $('scope').value = state.scope; renderAll(); }));
+  }
+
+  function renderNotes() {
+    const S = D.meta.settings || {}, has = v => v !== undefined && v !== null, k = D.meta.checks || {};
+    const row = (key, val, who) => '<tr><td><code>' + key + '</code></td><td class="v">' + val + '</td><td><span class="tag">' + who + '</span></td></tr>';
+    $('settab').innerHTML = '<thead><tr><th>config.yaml</th><th>Value</th><th>Set by</th></tr></thead><tbody>' + row('min_box_score', has(S.min_box_score) ? S.min_box_score : 'not set', 'you') + row('pixelwise_threshold', has(S.pixelwise_threshold) ? S.pixelwise_threshold : '?', 'you') +
+      row('heatmap_scaling_factor', has(S.heatmap_scaling_factor) ? S.heatmap_scaling_factor : '?', './run.sh after the fit') + row('heatmap_floor', has(S.heatmap_floor) ? S.heatmap_floor : '?', './run.sh after the fit') + '</tbody>';
+    const r = (a, b, c) => '<tr><td><b>' + a + '</b></td><td>' + b + '</td><td class="num">' + c + '</td></tr>';
+    $('check').innerHTML = '<table class="defs"><thead><tr><th>Data check</th><th></th><th class="num">Value</th></tr></thead><tbody>' +
+      r('Pictures', esc(k.data_folder || ''), D.pictures.length) + r('Pictures also in the memory bank', esc(k.bank_data || ''), k.in_bank === null || k.in_bank === undefined ? 'not checked' : k.in_bank) + r('Pictures also in the labelled test', esc(k.test_data || ''), k.in_test === null || k.in_test === undefined ? 'not checked' : k.in_test) +
+      r('Reference (folder name)', Object.keys(REF).map(g => esc(g) + ' = ' + REF[g]).join(' &middot; '), '') +
+      r('Labelled test set', 'sensitivity ' + R.sens.k + ' / ' + R.sens.n + ' &middot; specificity ' + R.spec.k + ' / ' + R.spec.n, '') +
+      r('Estimate', 'defect share = (flagged share - (1 - specificity)) / (sensitivity - (1 - specificity)); range from the 95% CI of both rates', '') + '</tbody></table>';
+    const nb = k.in_bank || 0, nt = k.in_test || 0;
+    $('banner').innerHTML = (nb + nt > 0) ? '<div class="warnbar">' + (nb ? '<b>' + nb + '</b> pictures are also in the memory bank data. ' : '') + (nt ? '<b>' + nt + '</b> pictures are also in the labelled test. ' : '') + (state.exBank ? 'Excluded from every number.' : 'Included: the results are too good for them.') + '</div>' : '';
+  }
+
+  /* pictures */
+  const overlay = p => { let s = '<svg viewBox="0 0 ' + p.w + ' ' + p.h + '" preserveAspectRatio="none" aria-hidden="true">'; p.boxes.forEach(b => { s += '<rect x="' + b.x1 + '" y="' + b.y1 + '" width="' + (b.x2 - b.x1) + '" height="' + (b.y2 - b.y1) + '" fill="none" stroke="var(--pred)" stroke-width="2.5" vector-effect="non-scaling-stroke"/><text x="' + (b.x1 + 5) + '" y="' + (b.y1 + p.w * 0.04) + '" style="font-size:' + (p.w * 0.04) + 'px;font-weight:700" fill="#fff" stroke="var(--pred)" stroke-width="' + (p.w * 0.008) + '" paint-order="stroke" stroke-linejoin="round">' + fmt(b.score, 2) + '</text>'; }); return s + '</svg>'; };
+  const tagOf = p => { const rf = refOf(p); return !p.flagged ? (rf === 'defect' ? 'FN' : 'not flagged') : rf === 'okay' ? 'FP' : rf === 'defect' ? 'TP' : 'flagged'; };
+  function card(p) { return '<button class="card" data-i="' + p.i + '"><div class="thumb"><img loading="lazy" alt="" src="' + D.images[p.img] + '">' + overlay(p) + '</div><div class="cap"><div class="nm">' + esc(p.name) + '</div><span class="badge">' + tagOf(p) + '</span>score ' + fmt(p.score) + ' &middot; ' + p.boxes.length + ' boxes</div></button>'; }
+  function list() {
+    let r = scoped().filter(p => (state.view === 'table' || p.flagged) && (!state.q || p.name.toLowerCase().includes(state.q.toLowerCase())));
+    r.sort(state.sort === 'name' ? (a, b) => a.name.localeCompare(b.name) : state.sort === 'score_asc' ? (a, b) => a.score - b.score : (a, b) => b.score - a.score);
+    return r;
+  }
+  function renderBrowser() {
+    const r = list(); nav = r.filter(p => p.flagged); $('count').textContent = r.length + ' pictures';
+    $('tab-gal').setAttribute('aria-pressed', state.view === 'gallery'); $('tab-tab').setAttribute('aria-pressed', state.view === 'table');
+    $('gallery').hidden = state.view !== 'gallery'; $('tablewrap').hidden = state.view !== 'table';
+    const shown = r.slice(0, state.shown);
+    if (state.view === 'gallery') { $('gallery').innerHTML = shown.map(card).join(''); $('gallery').querySelectorAll('.card').forEach(c => c.addEventListener('click', () => openViewer(+c.dataset.i))); }
+    else {
+      $('tablewrap').innerHTML = '<table><thead><tr><th>Name</th><th>Folder</th><th class="num">Score</th><th class="num">Boxes</th><th>Result</th></tr></thead><tbody>' + shown.map(p => '<tr class="' + (p.flagged ? 'click' : '') + '" data-i="' + p.i + '"><td>' + esc(p.name) + '</td><td>' + esc(p.folder) + '</td><td class="num">' + fmt(p.score, 3) + '</td><td class="num">' + p.boxes.length + '</td><td>' + tagOf(p) + '</td></tr>').join('') + '</tbody></table>';
+      $('tablewrap').querySelectorAll('tr.click').forEach(tr => tr.addEventListener('click', () => openViewer(+tr.dataset.i)));
+    }
+    $('more').hidden = r.length <= state.shown;
+  }
+  function openViewer(i) {
+    state.open = i; const p = D.pictures[i];
+    $('v-title').textContent = p.name + '  |  ' + tagOf(p) + '  |  score ' + fmt(p.score, 3); $('v-title').title = p.name;
+    $('v-img').innerHTML = '<img alt="" src="' + D.images[p.img] + '">' + overlay(p);
+    $('v-side').innerHTML = '<p class="small muted" style="margin-top:0">' + esc(p.folder) + ' &middot; reference ' + (refOf(p) || 'none') + ' &middot; ' + p.w + ' x ' + p.fullh + ' px</p><h2>Predicted boxes (' + p.boxes.length + ')</h2><ul class="small">' + p.boxes.map(b => '<li>score ' + fmt(b.score) + ' (' + b.x1 + ',' + b.y1 + ',' + b.x2 + ',' + b.y2 + ')</li>').join('') + '</ul>';
+    if (!$('viewer').open) $('viewer').showModal();
+  }
+  const step = d => { const k = nav.findIndex(p => p.i === state.open); if (k >= 0 && nav[k + d]) openViewer(nav[k + d].i); };
+
+  function renderAll() { renderStats(); renderNotes(); state.shown = 48; renderBrowser(); }
+  function showPage(p) { $('page-stats').hidden = p !== 'stats'; $('page-pics').hidden = p !== 'pics'; $('nav-stats').setAttribute('aria-pressed', p === 'stats'); $('nav-pics').setAttribute('aria-pressed', p === 'pics'); try { history.replaceState(null, '', p === 'pics' ? '#pictures' : '#statistics'); } catch (e) {} window.scrollTo(0, 0); }
+  $('nav-stats').addEventListener('click', () => showPage('stats')); $('nav-pics').addEventListener('click', () => showPage('pics'));
+  $('scope').addEventListener('change', e => { state.scope = e.target.value; renderAll(); });
+  $('exBank').addEventListener('change', e => { state.exBank = e.target.checked; renderAll(); });
+  $('tab-gal').addEventListener('click', () => { state.view = 'gallery'; state.shown = 48; renderBrowser(); }); $('tab-tab').addEventListener('click', () => { state.view = 'table'; state.shown = 48; renderBrowser(); });
+  $('sortSel').addEventListener('change', e => { state.sort = e.target.value; renderBrowser(); }); $('q').addEventListener('input', e => { state.q = e.target.value; state.shown = 48; renderBrowser(); });
+  $('more').addEventListener('click', () => { state.shown += 48; renderBrowser(); });
+  $('v-close').addEventListener('click', () => $('viewer').close()); $('v-prev').addEventListener('click', () => step(-1)); $('v-next').addEventListener('click', () => step(1));
+  const tip = $('tip');
+  renderAll();
+  if (location.hash === '#pictures') showPage('pics');
+})();
+</script>
+</body>
+</html>

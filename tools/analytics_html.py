@@ -52,13 +52,15 @@ def main():
     ap.add_argument("--pred", required=True)
     ap.add_argument("--out", default=None, help="default: <pred>/analytics.html")
     ap.add_argument("--title", default=None)
+    ap.add_argument("--bank", default=None, help="name of the run / memory bank the detections came from (shown on the page)")
+    ap.add_argument("--bank-data", default=None, help="the data folder the memory bank was built from (with images/ and NG/): the page then says how many test pictures are also in it")
     ap.add_argument("--thumb-width", type=int, default=640)
     ap.add_argument("--quality", type=int, default=62, help="JPEG quality of the thumbnails")
     a = ap.parse_args()
     here = os.path.dirname(os.path.abspath(__file__))
     out_path = a.out or os.path.join(a.pred, "analytics.html")
 
-    pics, skipped = [], 0
+    pics, skipped, missing_labels = [], 0, 0
     settings = None
     for g in GROUPS:
         for jp in sorted(glob.glob(os.path.join(a.pred, g, "boxes", "**", "*.json"), recursive=True)):
@@ -69,8 +71,11 @@ def main():
                 skipped += 1
                 continue
             settings = settings or j.get("settings")
+            if not os.path.isfile(os.path.join(a.labels, g, "label", stem + ".txt")):
+                missing_labels += 1
             pics.append({"name": stem, "group": g, "w": j["width"], "full_h": j["height"], "score": j["score"], "boxes": j["boxes"],
-                         "labels": read_labels(os.path.join(a.labels, g, "label", stem + ".txt")), "_img": img})
+                         "labels": read_labels(os.path.join(a.labels, g, "label", stem + ".txt")), "_img": img,
+                         "_pic": os.path.join(a.pred, g, "pictures", os.path.splitext(j["image"])[0] + ".png")})
     if not pics:
         raise SystemExit("[Analytics] no pictures: looked for %s/<group>/boxes/*.json with a matching picture in %s" % (a.pred, a.labels))
     if skipped:
@@ -90,18 +95,39 @@ def main():
         ok, buf = cv2.imencode(".jpg", cv2.resize(im, (tw, th), interpolation=cv2.INTER_AREA), [cv2.IMWRITE_JPEG_QUALITY, a.quality])
         images.append("data:image/jpeg;base64," + base64.b64encode(buf.tobytes()).decode("ascii"))
         p["img"] = len(images) - 1
+        pic = p.pop("_pic")                      # saved by --infer: original | original + heat map (side by side); the right half is the heat map
+        hp = cv2.imread(pic) if os.path.isfile(pic) else None
+        if hp is not None and hp.shape[1] >= 2 * 8:
+            hp = hp[:, hp.shape[1] // 2:]
+            hp = hp[:max(1, int(round(hp.shape[0] * crop_h / float(p["full_h"]))))]
+            hw = min(tw, 480)
+            hh = max(1, int(round(hp.shape[0] * hw / float(hp.shape[1]))))
+            ok, buf = cv2.imencode(".jpg", cv2.resize(hp, (hw, hh), interpolation=cv2.INTER_AREA), [cv2.IMWRITE_JPEG_QUALITY, 55])
+            images.append("data:image/jpeg;base64," + base64.b64encode(buf.tobytes()).decode("ascii"))
+            p["heat"] = len(images) - 1
         p["h"] = crop_h
         p.pop("full_h")
 
     n = {g: sum(1 for p in pics if p["group"] == g) for g in GROUPS}
     s = settings or {}
     short = lambda p: "/".join(os.path.abspath(p).rstrip("/").split("/")[-3:])
-    sub = "%d okay pictures and %d defect pictures | labels: .../%s | detections: .../%s" % (n["okay"], n["defect"], short(a.labels), short(a.pred))
-    if s:
-        sub += " | colours: " + ", ".join("%s %s" % (k.replace("heatmap_", "").replace("_threshold", " threshold").replace("scaling_factor", "scale"), v) for k, v in s.items())
+    sub = "labels: .../%s | detections: .../%s" % (short(a.labels), short(a.pred))
+    if a.bank:
+        sub += " | memory bank: " + a.bank
     sub += " | made " + datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    overlap = None
+    if a.bank_data:
+        bank_names = set()
+        for sub_dir in ("images", "NG"):
+            d = os.path.join(a.bank_data, sub_dir)
+            if os.path.isdir(d):
+                bank_names |= {os.path.splitext(f)[0] for f in os.listdir(d)}
+        overlap = sum(1 for p in pics if p["name"] in bank_names)
+        print("[Analytics] test pictures that are also in %s: %d of %d" % (a.bank_data, overlap, len(pics)))
+    checks = {"labels_folder": ".../" + short(a.labels), "pred_folder": ".../" + short(a.pred), "bank": a.bank, "bank_data": os.path.basename(os.path.normpath(a.bank_data)) if a.bank_data else None,
+              "pictures": len(pics), "missing_labels": missing_labels, "skipped": skipped, "overlap": overlap}
     data = {"meta": {"title": a.title or "Detection analytics: " + os.path.basename(os.path.normpath(a.labels)), "subtitle": sub,
-                     "okay_classes": OKAY_CLASSES, "full_height": full_h, "crop_h": crop_h, "thumb_w": a.thumb_width},
+                     "okay_classes": OKAY_CLASSES, "full_height": full_h, "crop_h": crop_h, "thumb_w": a.thumb_width, "checks": checks, "settings": settings or {}},
             "pictures": pics, "images": images}
     text = json.dumps(data, separators=(",", ":")).replace("</", "<\\/")
     tpl = open(os.path.join(here, "analytics_template.html")).read()

@@ -5,7 +5,7 @@
 #   Copy run.sh and one config template as config.yaml into a sim folder, open a terminal there and run ./run.sh
 #   The method is the line  method:  of config.yaml (config_jade.yaml = DINOv2 + autoencoders, the default;  config_patchcore.yaml = PatchCore).
 #   PatchCore: ./run.sh builds the memory bank (checkpoints/memory_bank.pt) from the OK pictures and sets the colours; --infer takes
-#   --checkpoint <run folder>/checkpoints/memory_bank.pt. --export, --pretrain, --calibrate, --analyse and --redo are for jade only.
+#   --checkpoint <run folder>/checkpoints/memory_bank.pt. --pretrain, --calibrate, --analyse and --redo are for jade only; --export works for both (PatchCore: the memory bank is baked into the ONNX).
 #   It opens the docker container itself. The code is NOT copied: code_dir in config.yaml says where it is.
 #   Everything it saves (jade_<data>_<date>_<time>/ or patchcore_<data>_<date>_<time>/ ...) goes into the folder you run it from, as you (never root), with group-writable permissions.
 #
@@ -36,7 +36,9 @@
 #                                     heatmap_scaling_factor and pixelwise_threshold are variables at the top of triton/triton_client.py
 #                                     (the export prints them, ready to paste), so they change without a new export. It checks the ONNX against PyTorch on OK
 #                                     pictures. An existing model of that name is never overwritten: use a new export.model_name (version), or --overwrite.
-#                                     --max_batch is the largest batch, max_batch_size of config.pbtxt (default 16).
+#                                     --max_batch is the largest batch, max_batch_size of config.pbtxt (default 16; PatchCore: 8).
+#                                     PatchCore: export.experiment is the run folder (latest = the newest patchcore_* folder) and --checkpoint is a memory_bank.pt; the
+#                                     memory bank is part of the model (a new fit is a new export), the client is triton/patchcore_client.py.
 #   ./run.sh --pretrain | --calibrate | --analyse [--config <run folder>/config.yaml]    the other steps of the original pipeline
 #
 #   --config <file>   default config.yaml in this folder          --gpu N   default gpu_id of the config (0 or 1)
@@ -51,7 +53,7 @@ FILTER="xFormers|warnings.warn|NVIDIA|TensorRT|Copyright|CUDA|Container|containe
 
 # ── Arguments ─────────────────────────────────────────────────────────────────
 ORIG_ARGS=("$@")
-CMD=train; CONFIG="config.yaml"; GPU=""; INFER_DIR=""; CK=""; OUT=""; SET=""; LIMIT=0; BATCH=8; REDO=""; MAX_BATCH=16
+CMD=train; CONFIG="config.yaml"; GPU=""; INFER_DIR=""; CK=""; OUT=""; SET=""; LIMIT=0; BATCH=8; REDO=""; MAX_BATCH=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --config)      CONFIG="$2"; shift 2 ;;
@@ -83,7 +85,7 @@ if [ "$USE_DOCKER" = true ] && [ ! -f /.dockerenv ]; then
     METHOD=$(python3 -c "import yaml,sys;print(yaml.safe_load(open(sys.argv[1])).get('method') or 'jade')" "$CONFIG") || exit 1
     case "$METHOD" in jade|patchcore) ;; *) echo "[ERROR] method in $CONFIG must be jade or patchcore, got: $METHOD"; exit 1;; esac
     if [ "$METHOD" = patchcore ]; then
-        case "$CMD" in pretrain|calibrate|analyse|export) echo "[ERROR] --$CMD is only for method jade (this config says patchcore)"; exit 1;; esac
+        case "$CMD" in pretrain|calibrate|analyse) echo "[ERROR] --$CMD is only for method jade (this config says patchcore)"; exit 1;; esac
     fi
 
     # Translate a host path to its Docker path (the mounts below)
@@ -167,7 +169,7 @@ CODE_DIR=$(cfg "d.get('code_dir')")
 METHOD=$(cfg "d.get('method') or 'jade'")
 if [ "$METHOD" = patchcore ]; then
     ENTRY_TRAIN="$CODE_DIR/patchcore/fit.py"; ENTRY_INFER="$CODE_DIR/patchcore/infer.py"; REDO=""        # PatchCore has no saved raw results to reuse
-    case "$CMD" in pretrain|calibrate|analyse|export) echo "[ERROR] --$CMD is only for method jade (this config says patchcore)"; exit 1;; esac
+    case "$CMD" in pretrain|calibrate|analyse) echo "[ERROR] --$CMD is only for method jade (this config says patchcore)"; exit 1;; esac
 else
     ENTRY_TRAIN="$CODE_DIR/training/train.py"; ENTRY_INFER="$CODE_DIR/inference/infer_images.py"
 fi
@@ -231,5 +233,6 @@ case "$CMD" in
   analyse)   $PY -u "$CODE_DIR/tools/analyse.py" -c "$CONFIG" 2>&1 | grep --line-buffered -v -E "$FILTER" ;;
   export)
     CKARG=(); if [ -n "$CK" ]; then [ -f "$CK" ] || { echo "[ERROR] checkpoint not found: $CK"; exit 1; }; CKARG=(--checkpoint "$CK"); fi
-    $PY -u "$CODE_DIR/tools/export.py" -c "$CONFIG" "${CKARG[@]}" ${OUT:+--out "$OUT"} --max_batch "$MAX_BATCH" 2>&1 | grep --line-buffered -v -E "$FILTER" ;;
+    if [ "$METHOD" = patchcore ]; then ENTRY_EXPORT="$CODE_DIR/patchcore/export.py"; else ENTRY_EXPORT="$CODE_DIR/tools/export.py"; fi
+    $PY -u "$ENTRY_EXPORT" -c "$CONFIG" "${CKARG[@]}" ${OUT:+--out "$OUT"} ${MAX_BATCH:+--max_batch "$MAX_BATCH"} 2>&1 | grep --line-buffered -v -E "$FILTER" ;;
 esac

@@ -103,11 +103,17 @@ def colour_scale(maps, model_cfg, src):
     return colour_max, thr, floor
 
 
-def colour_value(d_px, colour_max, thr, floor=0.0):
-    value = np.clip((d_px - floor) / (colour_max - floor), 0, 1)
-    if thr is not None:
-        value = np.where(value * 100.0 > thr, value, 0.0)
-    return value
+def box_min_score(model_cfg, tag="Result"):
+    """model.min_box_score (optional): a predicted box whose score (largest error inside it) is below it is not drawn and not written."""
+    v = model_cfg.get("min_box_score")
+    if v is None:
+        print("[%s] no min_box_score: every box is kept" % tag)
+        return None
+    print("[%s] min_box_score = %g: boxes with a score below it are dropped" % (tag, float(v)))
+    return float(v)
+
+
+from render import colour_value, picture as _picture, write_one, write_scores   # noqa: E402  (numpy + opencv only, also used by the Triton client)
 
 
 def visual_mode(model_cfg):
@@ -119,38 +125,13 @@ def visual_mode(model_cfg):
     return mode
 
 
-def picture(path, error_map, colour_max, thr, floor, size_hw, raw=None, mode="heatmap"):
-    """The picture that is saved: original | original + heat map, or (mode "boxes") original | original with the prediction boxes.
-    raw = the picture already read (BGR), else it is read from path."""
-    from tools.boxes import boxes_from_value, draw_boxes
-    H, W = size_hw
-    base = cv2.resize(cv2.imread(path) if raw is None else raw, (W, H))
-    value = colour_value(error_map, colour_max, thr, floor)
-    if mode == "boxes":
-        return np.concatenate([base, draw_boxes(base.copy(), boxes_from_value(value, error_map, thr, (H, W)))], axis=1)
-    heat = cv2.applyColorMap((value * 255).astype(np.uint8), cv2.COLORMAP_JET)
-    return np.concatenate([base, cv2.addWeighted(base, 0.6, heat, 0.4, 0)], axis=1)
+def picture(path, error_map, colour_max, thr, floor, size_hw, raw=None, mode="heatmap", min_score=None):
+    """The picture that is saved (see render.py). raw = the picture already read (BGR), else it is read from path."""
+    return _picture(cv2.imread(path) if raw is None else raw, error_map, colour_max, thr, floor, size_hw, mode, min_score)
 
 
-def save_results(maps, root, out_dir, colour_max, thr, floor, size_hw, mode="heatmap"):
+def save_results(maps, root, out_dir, colour_max, thr, floor, size_hw, mode="heatmap", min_score=None):
     """out_dir/scores.csv, out_dir/pictures/ and out_dir/boxes/ (prediction boxes as json, see tools/boxes.py), same sub-folders as root,
     for these maps. Returns the rows (image, score, p99)."""
-    from tools.boxes import boxes_from_value, write_boxes_json
-    settings = {"heatmap_scaling_factor": colour_max, "heatmap_floor": floor, "pixelwise_threshold": thr}
-    rows = []
-    for p, m in maps.items():
-        rel = os.path.relpath(p, root)
-        raw = cv2.imread(p)
-        rows.append((rel, float(m.max()), float(np.percentile(m, 99))))
-        dst = os.path.join(out_dir, "pictures", os.path.splitext(rel)[0] + ".png")
-        os.makedirs(os.path.dirname(dst), exist_ok=True)
-        cv2.imwrite(dst, picture(p, m, colour_max, thr, floor, size_hw, raw, mode))
-        boxes = boxes_from_value(colour_value(m, colour_max, thr, floor), m, thr, raw.shape[:2])
-        write_boxes_json(out_dir, rel, raw.shape[:2], m.max(), boxes, settings)
-    rows.sort(key=lambda r: -r[1])                                 # highest score first
-    os.makedirs(out_dir, exist_ok=True)
-    with open(os.path.join(out_dir, "scores.csv"), "w") as f:
-        w = csv.writer(f)
-        w.writerow(["image", "score_max", "score_p99"])
-        w.writerows(rows)
-    return rows
+    rows = [write_one(out_dir, os.path.relpath(p, root), cv2.imread(p), m, colour_max, thr, floor, size_hw, mode, min_score)[0] for p, m in maps.items()]
+    return write_scores(out_dir, rows)

@@ -141,7 +141,7 @@ def main():
     src = a.config
     if a.settings:
         st = yaml.load(open(a.settings), Loader=yaml.FullLoader)
-        for key in ("layer_weights", "featurewise_threshold", "heatmap_scaling_factor", "pixelwise_threshold", "visualisation"):
+        for key in ("layer_weights", "featurewise_threshold", "heatmap_scaling_factor", "pixelwise_threshold", "visualisation", "min_box_score"):
             if key in (st.get("model") or {}):
                 cfg["model"][key] = st["model"][key]
             else:
@@ -252,6 +252,9 @@ def main():
     if mode not in ("heatmap", "boxes"):
         raise SystemExit('[Infer] model.visualisation must be "heatmap" or "boxes", got: %s' % mode)
     print("[Infer] visualisation = %s" % mode)
+    min_score = cfg["model"].get("min_box_score")                      # optional: boxes with a lower score are dropped
+    min_score = None if min_score is None else float(min_score)
+    print("[Infer] " + ("no min_box_score: every box is kept" if min_score is None else "min_box_score = %g: boxes with a score below it are dropped" % min_score))
     pic_dir = os.path.join(a.out, "pictures")
     byname = {r[0]: r for r in rows}
     for rel in chosen:
@@ -260,12 +263,15 @@ def main():
         base = cv2.resize(raw, (W, H))
         d = cv2.resize(maps[p], (W, H), interpolation=cv2.INTER_LINEAR)
         value = colour_value(d, colour_max, thr)                          # 0..1: 0 = dark blue, 1 = dark red
-        write_boxes_json(a.out, rel, raw.shape[:2], byname[rel][2], boxes_from_value(value, d, thr, raw.shape[:2]),    # prediction boxes: tools/boxes.py
+        write_boxes_json(a.out, rel, raw.shape[:2], byname[rel][2], boxes_from_value(value, d, thr, raw.shape[:2], min_score),    # prediction boxes: tools/boxes.py
                          {"heatmap_scaling_factor": colour_max, "pixelwise_threshold": thr})
         heat = cv2.applyColorMap((value * 255).astype(np.uint8), cv2.COLORMAP_JET)
         img = np.concatenate([base, cv2.addWeighted(base, 0.6, heat, 0.4, 0)], axis=1)      # the TensorBoard picture: original | original + heat map
+        if mode == "heatmap" and min_score is not None:                                     # colour only the regions that become boxes (score >= min_box_score)
+            from tools.boxes import keep_mask
+            img = np.concatenate([base, np.where(keep_mask(value, d, thr, min_score)[..., None], img[:, W:], base)], axis=1)
         if mode == "boxes":                                                                 # original | original with the prediction boxes
-            img = np.concatenate([base, draw_boxes(base.copy(), boxes_from_value(value, d, thr, (H, W)))], axis=1)
+            img = np.concatenate([base, draw_boxes(base.copy(), boxes_from_value(value, d, thr, (H, W), min_score))], axis=1)
         ph, pw = H // grid[0], W // grid[1]
         grid_value = value[:grid[0] * ph, :grid[1] * pw].reshape(grid[0], ph, grid[1], pw).mean(axis=(1, 3)) * 100.0   # the same colour value per 14 x 14 square, 0..100
         post = {"image": rel, "grid": list(grid), "layers": layers,

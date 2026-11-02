@@ -37,6 +37,7 @@ model:
     featurewise_threshold: 0.6
     pixelwise_threshold: 0
     visualisation: "heatmap"
+    # min_box_score: 1.25   # optional: predicted boxes whose score (largest error inside the box) is below it are dropped
 
 training:
     num_epochs: 50

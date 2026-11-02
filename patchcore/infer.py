@@ -37,7 +37,7 @@ def main():
     src = a.config
     if a.settings:
         st = yaml.safe_load(open(a.settings))
-        for key in ("heatmap_scaling_factor", "heatmap_floor", "pixelwise_threshold", "visualisation"):
+        for key in ("heatmap_scaling_factor", "heatmap_floor", "pixelwise_threshold", "visualisation", "min_box_score"):
             if key in (st.get("model") or {}):
                 cfg["model"][key] = st["model"][key]
             else:
@@ -67,7 +67,8 @@ def main():
     colour_max, thr, floor = common.colour_scale(maps, cfg["model"], src)
     print("[Result] error over all pixels of these pictures: half of them below %.3f | 90%% below %.3f | 99%% below %.3f" % tuple(common.global_p99(maps.values(), q) for q in (0.5, 0.9, 0.99)))
     mode = common.visual_mode(cfg["model"])
-    rows = common.save_results(maps, a.data, a.out, colour_max, thr, floor, size, mode)
+    min_score = common.box_min_score(cfg["model"])
+    rows = common.save_results(maps, a.data, a.out, colour_max, thr, floor, size, mode, min_score)
     v = np.array([r[1] for r in rows])
     print("[Infer] score (largest error of a picture) over %d pictures: median %.3f | p95 %.3f | max %.3f" % (len(v), np.median(v), np.percentile(v, 95), v.max()))
     print("[Infer] 10 highest-scoring pictures:")
