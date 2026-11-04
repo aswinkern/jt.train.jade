@@ -116,7 +116,7 @@ def main():
     ap.add_argument("--max_batch", type=int, default=1, help="largest batch: max_batch_size of config.pbtxt (default 1: TensorRT keeps the whole distance table of the search in memory, 4.2 GB per picture at 518 x 518, and one picture already keeps the GPU busy; ONNX Runtime can take more)")
     ap.add_argument("--chunk", type=int, default=4096, help="bank patches per matrix product (default 4096: with batch 8 about 0.5 GB per product)")
     ap.add_argument("--qtile", type=int, default=None,
-                    help="query patches per tile (0 = the whole picture at once). TensorRT asks for one query x bank table, 4.23 GB at 518 x 518 with a bank of 245,050; a tile of 512 bounds it at about 0.5 GB. The numbers do not change. Default: export.query_tile of the config, else 0")
+                    help="query patches per tile (0 = the whole picture at once). TensorRT asks for one query x bank table, 4.23 GB at 518 x 518 with a bank of 245,050; a tile of 512 bounds it at about 0.5 GB. The numbers do not change. Default: export.query_tile of the config (512 in the template), else 0")
     ap.add_argument("--check", type=int, default=2, help="OK pictures and NG pictures each used to check the ONNX against PyTorch (0 = no check)")
     ap.add_argument("--fp16", dest="fp16", action="store_true", default=None,
                     help="also write 1/model_fp16.onnx, needed to build a TensorRT 11 engine (RTX 50-series) where trtexec has no --fp16. Default: export.fp16 of the config, else off")

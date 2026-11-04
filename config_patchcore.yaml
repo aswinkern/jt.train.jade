@@ -49,6 +49,9 @@ export:
     # where trtexec has no --fp16 and the FP32 ONNX does not fit in 12 GB. See convert.md and tools/onnx_fp16.py.
     fp16: false
     # query patches per tile of the nearest-neighbour search, 0 = the whole picture at once.
-    # TensorRT asks for one query x bank table: 4.23 GB at 518 x 518 with a bank of 245,050.
-    # 512 bounds it at about 0.5 GB. The numbers do not change, only the matrix shapes.
-    query_tile: 0
+    # TensorRT asks for one query x bank table and allocates it in one piece: 4.23 GB at
+    # 518 x 518 with a bank of 245,050 patches. 512 bounds it at about 0.5 GB. Measured on
+    # PatchCore_v1.0.0: the scores of all 307 labelled test pictures were bit-identical to the
+    # untiled engine, inference stayed at 26.2 ms, and the server went from 5160 to 3210 MiB.
+    # See the end of convert.md. Set 0 to go back to the old single-table behaviour.
+    query_tile: 512

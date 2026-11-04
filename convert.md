@@ -119,6 +119,41 @@ cd /jidoka/simulations/jdisk3/jt.cust.anomaly_jade_v3/models/PatchCore_v1.0.0/Se
   --minShapes=image:1x3x518x518 --optShapes=image:1x3x518x518 --maxShapes=image:1x3x518x518 --memPoolSize=workspace:6000
 ```
 
+### `export.query_tile`: the 4.23 GB table
+
+The second bullet above says a server needs about 5 GB. Most of that is one allocation. The
+ONNX chunks the **bank** (60 chunks of 4096), but TensorRT fuses those back into a single
+query x bank table and asks for it in one piece:
+
+```
+4225 query patches x 245050 bank patches x 4 bytes = 4.23 GB      (2.07 GB in FP16)
+```
+
+`export.query_tile` (default 512; `--qtile N`) tiles the **queries** instead, so the table is
+`query_tile x bank` whatever the bank size. The tiling is over the patch grid, which the image
+size fixes, so the batch axis stays dynamic, and every query is still compared against the same
+bank chunks in the same order.
+
+Measured on PatchCore_v1.0.0 (bank of 245,050 patches, 518 x 518, FP16 engine, RTX 3080 Ti),
+over the 307 labelled test pictures:
+
+| | untiled | `query_tile: 512` |
+|---|---|---|
+| server VRAM | 5160 MiB | **3210 MiB** |
+| inference per picture | 26.48 ms | 26.23 ms |
+| scores of all 307 pictures | - | **bit-identical** (max abs difference 0.000000) |
+| flagged / not flagged | - | **0 of 307 changed**, at the 99 %, 95 % and 90 % OK-pass points |
+| engine build | 183.6 s | 189.9 s |
+| engine file | 561.8 MB | 562.7 MB |
+
+The graph is about nine times larger (9 tiles x 60 bank chunks), which costs a few per cent of
+build time and nothing at inference. Tracing that graph is heavy on the host: the export of a
+245,050-patch bank made a 31 GB machine briefly unresponsive, so do not run it next to
+something interactive.
+
+Smaller tiles save more memory; 512 was enough to bring this model under half its old
+footprint. `query_tile: 0` restores the old single-table behaviour.
+
 Right numbers: `patchcore_client.py` on the labelled test gives the same flagged / not flagged as `./run.sh --infer` for every picture and nearly the same scores
 (compare the `boxes/` folders; tools/analytics_html.py on the client output must show the same numbers as on the `--infer` output). Measured with the engine above on the 307 labelled
 test pictures: 0 pictures flagged differently, the same number of boxes on every picture, picture scores differ by 0.0005 at most (the GPU convolutions of `--infer` run in TF32, so
