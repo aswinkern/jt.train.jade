@@ -46,7 +46,7 @@ def pool_matrix(c, d):
 
 class ExportNet(torch.nn.Module):
     """PatchCore.error_map as pure tensor operations with a dynamic batch (nothing about the batch size is fixed inside)."""
-    def __init__(self, pc, size_hw, chunk):
+    def __init__(self, pc, size_hw, chunk, qtile=0):
         super().__init__()
         self.net = pc.net
         self.layers, self.neigh, self.sigma, self.size = pc.layers, pc.neigh, pc.sigma, tuple(size_hw)
@@ -70,6 +70,15 @@ class ExportNet(torch.nn.Module):
             self.register_buffer("bt%d" % self.nchunks, b.t().contiguous())                               # (D, n)
             self.register_buffer("bb%d" % self.nchunks, (b * b).sum(1))                                   # |b|^2
             self.nchunks += 1
+        self.qtile = int(qtile)                                # query patches per tile (0 = all of the picture at once)
+
+    def _dist(self, f):
+        """(n, D) query rows -> (n,) distance to the nearest bank patch, min over the whole bank."""
+        best = None
+        for k in range(self.nchunks):                                                                # min over the bank of |b|^2 - 2 q.b
+            v = torch.amin(getattr(self, "bb%d" % k).unsqueeze(0) - 2.0 * (f @ getattr(self, "bt%d" % k)), dim=1)
+            best = v if best is None else torch.minimum(best, v)
+        return torch.sqrt(torch.clamp((f * f).sum(1) + best, min=0.0))
 
     def forward(self, x):
         n = self.net
@@ -86,11 +95,13 @@ class ExportNet(torch.nn.Module):
         maps = [m if tuple(m.shape[-2:]) == (h, w) else F.interpolate(m, size=(h, w), mode="bilinear", align_corners=False) for m in maps]
         parts = [m.permute(0, 2, 3, 1).reshape(-1, m.shape[1]) @ getattr(self, "pool%d" % i) for m, i in zip(maps, self.layers)]    # (B*h*w, embed_dim)
         f = torch.cat(parts, 1) @ self.pool_all - self.mu                                                # (B*h*w, embed_dim), centred on the bank mean
-        best = None
-        for k in range(self.nchunks):                                                                    # min over the bank of |b|^2 - 2 q.b
-            v = torch.amin(getattr(self, "bb%d" % k).unsqueeze(0) - 2.0 * (f @ getattr(self, "bt%d" % k)), dim=1)
-            best = v if best is None else torch.minimum(best, v)
-        d = torch.sqrt(torch.clamp((f * f).sum(1) + best, min=0.0))                                      # distance to the nearest bank patch
+        hw, D = h * w, f.shape[-1]
+        if self.qtile and self.qtile < hw:                                                               # tile the queries: the distance table is then qtile x bank,
+            fq = f.reshape(-1, hw, D)                                                                    # not hw x bank. Same numbers, far less memory in TensorRT.
+            d = torch.cat([self._dist(fq[:, s:min(s + self.qtile, hw), :].reshape(-1, D)).reshape(-1, min(s + self.qtile, hw) - s)
+                           for s in range(0, hw, self.qtile)], dim=1).reshape(-1)
+        else:
+            d = self._dist(f)                                                                            # distance to the nearest bank patch
         m = F.interpolate(d.reshape(-1, 1, h, w), size=self.size, mode="bilinear", align_corners=False)
         return gaussian_blur(m, self.sigma).reshape(-1, self.size[0], self.size[1])                      # reshape, not squeeze: squeeze exports as an If node TensorRT cannot parse
 
@@ -104,6 +115,8 @@ def main():
     ap.add_argument("--overwrite", action="store_true", help="replace an existing model of the same name")
     ap.add_argument("--max_batch", type=int, default=1, help="largest batch: max_batch_size of config.pbtxt (default 1: TensorRT keeps the whole distance table of the search in memory, 4.2 GB per picture at 518 x 518, and one picture already keeps the GPU busy; ONNX Runtime can take more)")
     ap.add_argument("--chunk", type=int, default=4096, help="bank patches per matrix product (default 4096: with batch 8 about 0.5 GB per product)")
+    ap.add_argument("--qtile", type=int, default=None,
+                    help="query patches per tile (0 = the whole picture at once). TensorRT asks for one query x bank table, 4.23 GB at 518 x 518 with a bank of 245,050; a tile of 512 bounds it at about 0.5 GB. The numbers do not change. Default: export.query_tile of the config, else 0")
     ap.add_argument("--check", type=int, default=2, help="OK pictures and NG pictures each used to check the ONNX against PyTorch (0 = no check)")
     ap.add_argument("--fp16", dest="fp16", action="store_true", default=None,
                     help="also write 1/model_fp16.onnx, needed to build a TensorRT 11 engine (RTX 50-series) where trtexec has no --fp16. Default: export.fp16 of the config, else off")
@@ -116,6 +129,9 @@ def main():
     ex = st.get("export") or {}
     model_name = str(ex.get("model_name") or DEFAULT_MODEL_NAME)
     want_fp16 = bool(ex.get("fp16", False)) if a.fp16 is None else a.fp16    # export.fp16 of config.yaml, overridden by --fp16 / --no_fp16
+    qtile = int(ex.get("query_tile", 0) or 0) if a.qtile is None else a.qtile  # export.query_tile of config.yaml, overridden by --qtile
+    if qtile < 0:
+        raise SystemExit("[Export] --qtile must be 0 or more")
     if a.out is None and not ex.get("models_dir"):
         raise SystemExit("[Export] set export.models_dir in %s (the models folder of the customer), or give --out" % a.config)
     model_root = a.out or os.path.join(str(ex["models_dir"]), model_name)
@@ -150,10 +166,12 @@ def main():
         if ck["meta"].get(k) != v:
             raise SystemExit("[Export] the memory bank was made with %s = %s, the config says %s" % (k, ck["meta"].get(k), v))
     pc.set_bank(ck["bank"])
-    net = ExportNet(pc, size, a.chunk).to(device).eval()
+    net = ExportNet(pc, size, a.chunk, qtile).to(device).eval()
     N, D = pc.bank.shape
     print("[Export] device %s | memory bank %d patches x %d (%.2f GB as float32) in %d chunks of %d | input (B, 3, %d, %d) -> error_map (B, %d, %d), B dynamic"
           % (device, N, D, N * D * 4 / 1e9, net.nchunks, a.chunk, H, W, H, W))
+    print("[Export] query tiling: %s" % ("%d patches per tile (the distance table is bounded at %d x %d = %.2f GB)"
+          % (qtile, qtile, N, qtile * N * 4 / 1e9) if qtile else "off (one table of all query patches x the bank)"))
 
     os.makedirs(ver_dir, exist_ok=True)
     tmp_onnx = os.path.join(ver_dir, "_tmp.onnx")
