@@ -105,6 +105,9 @@ def main():
     ap.add_argument("--max_batch", type=int, default=1, help="largest batch: max_batch_size of config.pbtxt (default 1: TensorRT keeps the whole distance table of the search in memory, 4.2 GB per picture at 518 x 518, and one picture already keeps the GPU busy; ONNX Runtime can take more)")
     ap.add_argument("--chunk", type=int, default=4096, help="bank patches per matrix product (default 4096: with batch 8 about 0.5 GB per product)")
     ap.add_argument("--check", type=int, default=2, help="OK pictures and NG pictures each used to check the ONNX against PyTorch (0 = no check)")
+    ap.add_argument("--fp16", dest="fp16", action="store_true", default=None,
+                    help="also write 1/model_fp16.onnx, needed to build a TensorRT 11 engine (RTX 50-series) where trtexec has no --fp16. Default: export.fp16 of the config, else off")
+    ap.add_argument("--no_fp16", dest="fp16", action="store_false", help="never write the FP16 ONNX, whatever export.fp16 of the config says")
     a = ap.parse_args()
     if a.max_batch < 1 or a.chunk < 1:
         raise SystemExit("[Export] --max_batch and --chunk must be 1 or more")
@@ -112,6 +115,7 @@ def main():
     st = yaml.safe_load(open(a.config))
     ex = st.get("export") or {}
     model_name = str(ex.get("model_name") or DEFAULT_MODEL_NAME)
+    want_fp16 = bool(ex.get("fp16", False)) if a.fp16 is None else a.fp16    # export.fp16 of config.yaml, overridden by --fp16 / --no_fp16
     if a.out is None and not ex.get("models_dir"):
         raise SystemExit("[Export] set export.models_dir in %s (the models folder of the customer), or give --out" % a.config)
     model_root = a.out or os.path.join(str(ex["models_dir"]), model_name)
@@ -197,6 +201,15 @@ def main():
             ok = out_n.shape == (len(pics), H, W) and all(v / scale < 5e-3 for v in d.values())
             print("[Export] check: %s" % ("PASSED" if ok else "FAILED (do not use this export)"))
 
+    # -- FP16 ONNX for TensorRT 11 and newer (RTX 50-series): trtexec there has no --fp16 ---------------
+    fp16_onnx = None
+    if want_fp16:
+        try:
+            from tools.onnx_fp16 import write_fp16
+        except ImportError:
+            from onnx_fp16 import write_fp16
+        fp16_onnx = write_fp16(final_onnx)["onnx"]
+
     # ── Triton config and TensorRT command ──────────────────────────────────────────────────────────────
     with open(os.path.join(model_dir, "config.pbtxt"), "w") as f:
         f.write('name: "%s"\nplatform: "tensorrt_plan"\nmax_batch_size: %d\n\n' % (model_name, a.max_batch))
@@ -213,7 +226,13 @@ def main():
     print("  HEATMAP_FLOOR = %s" % sm.get("heatmap_floor"))
     print("  PIXELWISE_THRESHOLD = %s" % sm.get("pixelwise_threshold"))
     print("  MIN_BOX_SCORE = %s" % sm.get("min_box_score"))
-    print("[Export] Build the TensorRT engine with convert.md (PatchCore: WITHOUT --fp16), Serving_model/1/ then holds model.plan.")
+    print("[Export] Build the TRT engine with convert.md, Serving_model/1/ then holds model.plan.")
+    if fp16_onnx:
+        print("[Export]   TRT 11 or newer (RTX 50-series): build from %s and pass NO precision flag (trtexec has no --fp16 there)." % os.path.basename(fp16_onnx))
+        print("[Export]   TRT 10 or older: build from model.onnx (PatchCore in FP32 needs --noTF32), or add --fp16 to trtexec.")
+    else:
+        print("[Export]   TRT 10 or older: build from model.onnx (PatchCore in FP32 needs --noTF32), or add --fp16 to trtexec.")
+        print("[Export]   For TRT 11 / RTX 50-series set export.fp16: true (or --fp16): that build needs an FP16 ONNX, and the FP32 one does not fit in 12 GB.")
 
 
 if __name__ == "__main__":

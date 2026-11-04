@@ -125,3 +125,90 @@ test pictures: 0 pictures flagged differently, the same number of boxes on every
 exact equality is not expected). If the engine gives different
 numbers (as it did for JADE with TensorRT 10.3 and 10.4), serve the ONNX through the ONNX Runtime backend instead: `platform: "onnxruntime_onnx"` in
 `config.pbtxt`, and no `model.plan`.
+
+---
+
+# TensorRT 11 and the RTX 50-series (Blackwell)
+
+Everything above assumes TensorRT 10 (Triton 24.08). A 50-series card needs Triton 25.01 or
+newer, and from **TensorRT 11 the recipe changes**, so read this before converting for one.
+
+## `--fp16` no longer exists
+
+```
+$ trtexec --onnx=model.onnx --saveEngine=model.plan --fp16 ...
+[E] Unknown option: --fp16
+```
+
+TensorRT 10 and older build **weakly typed** networks: the ONNX stays FP32 and `--fp16` is
+permission for the builder to choose FP16 kernels layer by layer. TensorRT 11 builds
+**strongly typed** networks and says so in its own help:
+
+```
+--stronglyTyped   [Deprecated] Strongly typed network is now enabled by default. This flag is a no-op.
+```
+
+In a strongly typed network the builder honours the types declared in the ONNX and does no
+precision conversion of its own. There is no `--best`, no `--precisionConstraints` and no
+`--layerPrecisions` either; `--noTF32` is the only precision knob left. **The precision has
+to be in the ONNX.**
+
+## So export an FP16 ONNX
+
+Set `export.fp16: true` in `config.yaml` (or `./run.sh --export --fp16`). Next to the FP32
+`1/model.onnx` the export then also writes `1/model_fp16.onnx` (+ `.data`), about half the
+size. The input and the output stay FP32, so `config.pbtxt` (`TYPE_FP32`) and the Triton
+clients need no change.
+
+To convert an ONNX that already exists: `python tools/onnx_fp16.py -i <model.onnx>`.
+
+## Build it with no precision flag at all
+
+```bash
+cd <models_dir>/<model_name>/Serving_model/1
+
+/usr/src/tensorrt/bin/trtexec --onnx=model_fp16.onnx --saveEngine=model.plan \
+  --minShapes=image:1x3x518x518 --optShapes=image:1x3x518x518 --maxShapes=image:1x3x518x518 \
+  --memPoolSize=workspace:6000
+```
+
+The engine is FP16 because the model is. About 18 s to build on an RTX 5070.
+
+## For PatchCore this is not optional
+
+The FP32 ONNX **cannot be built** on a 12 GB 50-series card. TensorRT 11 fuses the whole
+network into one node whose only tactic asks for 7.41 GB:
+
+```
+UNSUPPORTED_STATE: Skipping tactic 0 due to insufficient memory on requested size of 7410216432
+Error Code 10: Could not find any implementation for node {ForeignNode[/conv1/Conv.../Reshape_5]}
+Assertion failure: false && "Attempting to access an empty engine!"
+```
+
+It skips the tactic, finds no other, and writes a **0-byte engine while still printing
+`&&&& PASSED`**. Halving the weights and the distance table brings the build into range.
+
+## Measured, and checked
+
+PatchCore_v1.0.0 (bank of 245,050 patches, 518 x 518), against the FP32 PyTorch result of
+`--infer` over the 307 labelled test pictures:
+
+| engine | per picture | throughput | AUROC | max per-picture deviation |
+|---|---|---|---|---|
+| RTX 3080 Ti, TRT 10.3, FP32 `--noTF32` | 100.6 ms | 479 /min | 0.9411 | - |
+| RTX 3080 Ti, TRT 10.3, `--fp16` | 26.5 ms | 1379 /min | 0.9410 | 0.0061 |
+| RTX 5070, TRT 11.3, FP16 ONNX | 29.8 ms | 1281 /min | 0.9412 | 0.0067 |
+
+No picture changed its flagged / not-flagged decision at the 99 % or 95 % OK-pass operating
+points. A deviation of about 0.006 is the normal FP16 signature.
+
+**A passing build says nothing about the numbers.** Always compare an engine against
+`--infer` before using it, as the warning at the end of the JADE section says - that failure
+mode (numbers about 20 times too large, with TensorRT 10.3 and 10.4) was silent too.
+
+## An engine is not portable
+
+A `.plan` is tied to the GPU architecture **and** the TensorRT version. The 3080 Ti engine
+will not load under TensorRT 11, and the 5070 engine will not load under 10.3. Keep the
+ONNX - that is the portable artefact - and rebuild the engine on each machine, then re-check
+it. Building takes well under a minute.

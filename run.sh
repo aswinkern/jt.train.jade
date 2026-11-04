@@ -25,7 +25,7 @@
 #                                     folder, --batch N pictures per GPU step (default 8, lower it if the GPU runs out of memory), --redo
 #                                     runs the model again (default: raw/ is reused when checkpoint, pictures and featurewise_threshold are the same).
 #   ./run.sh --tensorboard            only TensorBoard on this folder (Ctrl+C to stop)
-#   ./run.sh --export [--checkpoint <epoch_N.pt>] [--out <folder>] [--max_batch N]
+#   ./run.sh --export [--checkpoint <epoch_N.pt>] [--out <folder>] [--max_batch N] [--fp16 | --no_fp16]
 #                                     export.model_name, export.experiment and export.epoch of config.yaml say which model name and which
 #                                     checkpoint (<experiment>/checkpoints/epoch_<epoch>.pt); --checkpoint overrides experiment and epoch.
 #                                     ONNX for Triton / TensorRT into export.models_dir/export.model_name/Serving_model/ (the models folder of the customer,
@@ -37,6 +37,8 @@
 #                                     (the export prints them, ready to paste), so they change without a new export. It checks the ONNX against PyTorch on OK
 #                                     pictures. An existing model of that name is never overwritten: use a new export.model_name (version), or --overwrite.
 #                                     --max_batch is the largest batch, max_batch_size of config.pbtxt (default 16; PatchCore: 8).
+#                                     --fp16 also writes 1/model_fp16.onnx, needed to build a TensorRT 11 engine (RTX 50-series) where
+#                                     trtexec has no --fp16; --no_fp16 never writes it. Default: export.fp16 of config.yaml. See convert.md.
 #                                     PatchCore: export.experiment is the run folder (latest = the newest patchcore_* folder) and --checkpoint is a memory_bank.pt; the
 #                                     memory bank is part of the model (a new fit is a new export), the client is triton/patchcore_client.py.
 #   ./run.sh --pretrain | --calibrate | --analyse [--config <run folder>/config.yaml]    the other steps of the original pipeline
@@ -53,7 +55,7 @@ FILTER="xFormers|warnings.warn|NVIDIA|TensorRT|Copyright|CUDA|Container|containe
 
 # ── Arguments ─────────────────────────────────────────────────────────────────
 ORIG_ARGS=("$@")
-CMD=train; CONFIG="config.yaml"; GPU=""; INFER_DIR=""; CK=""; OUT=""; SET=""; LIMIT=0; BATCH=8; REDO=""; MAX_BATCH=""
+CMD=train; CONFIG="config.yaml"; GPU=""; INFER_DIR=""; CK=""; OUT=""; SET=""; LIMIT=0; BATCH=8; REDO=""; MAX_BATCH=""; FP16=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --config)      CONFIG="$2"; shift 2 ;;
@@ -67,6 +69,8 @@ while [ $# -gt 0 ]; do
         --limit)       LIMIT="$2"; shift 2 ;;
         --batch)       BATCH="$2"; shift 2 ;;
         --max_batch)   MAX_BATCH="$2"; shift 2 ;;
+        --fp16)        FP16="--fp16"; shift ;;
+        --no_fp16)     FP16="--no_fp16"; shift ;;
         --redo)        REDO="--redo"; shift ;;
         --pretrain|--calibrate|--analyse|--export) CMD="${1#--}"; shift ;;
         --tensorboard) CMD=tensorboard; shift ;;
@@ -234,5 +238,5 @@ case "$CMD" in
   export)
     CKARG=(); if [ -n "$CK" ]; then [ -f "$CK" ] || { echo "[ERROR] checkpoint not found: $CK"; exit 1; }; CKARG=(--checkpoint "$CK"); fi
     if [ "$METHOD" = patchcore ]; then ENTRY_EXPORT="$CODE_DIR/patchcore/export.py"; else ENTRY_EXPORT="$CODE_DIR/tools/export.py"; fi
-    $PY -u "$ENTRY_EXPORT" -c "$CONFIG" "${CKARG[@]}" ${OUT:+--out "$OUT"} ${MAX_BATCH:+--max_batch "$MAX_BATCH"} 2>&1 | grep --line-buffered -v -E "$FILTER" ;;
+    $PY -u "$ENTRY_EXPORT" -c "$CONFIG" "${CKARG[@]}" ${OUT:+--out "$OUT"} ${MAX_BATCH:+--max_batch "$MAX_BATCH"} ${FP16:+$FP16} 2>&1 | grep --line-buffered -v -E "$FILTER" ;;
 esac

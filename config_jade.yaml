@@ -51,3 +51,6 @@ export:
     model_name: "Anomaly_v1.0.0"
     experiment: "latest"
     epoch: 50
+    # true also writes Serving_model/1/model_fp16.onnx. Needed to build a TensorRT 11 engine (RTX 50-series),
+    # where trtexec has no --fp16. See convert.md and tools/onnx_fp16.py.
+    fp16: false

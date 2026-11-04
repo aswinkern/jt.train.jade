@@ -45,3 +45,6 @@ export:
     models_dir: "/jidoka/simulations/jdisk3/jt.cust.anomaly_jade_v3/models"
     model_name: "PatchCore_v1.0.0"
     experiment: "latest"
+    # true also writes Serving_model/1/model_fp16.onnx. Needed to build a TensorRT 11 engine (RTX 50-series),
+    # where trtexec has no --fp16 and the FP32 ONNX does not fit in 12 GB. See convert.md and tools/onnx_fp16.py.
+    fp16: false

@@ -53,6 +53,9 @@ def main():
     ap.add_argument("--overwrite", action="store_true", help="replace an existing model of the same name")
     ap.add_argument("--max_batch", type=int, default=16, help="largest batch: max_batch_size of config.pbtxt (default 16)")
     ap.add_argument("--check", type=int, default=4, help="OK pictures used to check the ONNX against PyTorch (0 = no check)")
+    ap.add_argument("--fp16", dest="fp16", action="store_true", default=None,
+                    help="also write 1/model_fp16.onnx, needed to build a TensorRT 11 engine (RTX 50-series) where trtexec has no --fp16. Default: export.fp16 of the config, else off")
+    ap.add_argument("--no_fp16", dest="fp16", action="store_false", help="never write the FP16 ONNX, whatever export.fp16 of the config says")
     a = ap.parse_args()
 
     bmax = a.max_batch
@@ -61,6 +64,7 @@ def main():
     st = yaml.load(open(a.config), Loader=yaml.FullLoader)
     ex = st.get("export") or {}
     MODEL_NAME = str(ex.get("model_name") or DEFAULT_MODEL_NAME)
+    want_fp16 = bool(ex.get("fp16", False)) if a.fp16 is None else a.fp16    # export.fp16 of config.yaml, overridden by --fp16 / --no_fp16
     if a.out is None and not ex.get("models_dir"):
         raise SystemExit("[Export] set export.models_dir in %s (the models folder of the customer), or give --out" % a.config)
     model_root = a.out or os.path.join(str(ex["models_dir"]), MODEL_NAME)
@@ -151,6 +155,15 @@ def main():
             ok = out_n.shape == (len(pics), H, W) and d_n / scale < 1e-3 and d_1 / scale < 1e-3
             print("[Export] check: %s" % ("PASSED" if ok else "FAILED (do not use this export)"))
 
+    # -- FP16 ONNX for TensorRT 11 and newer (RTX 50-series): trtexec there has no --fp16 ---------------
+    fp16_onnx = None
+    if want_fp16:
+        try:
+            from tools.onnx_fp16 import write_fp16
+        except ImportError:
+            from onnx_fp16 import write_fp16
+        fp16_onnx = write_fp16(final_onnx)["onnx"]
+
     # ── Triton config and TensorRT command ──────────────────────────────────────────────────────────────
     with open(os.path.join(model_dir, "config.pbtxt"), "w") as f:               # same style as the customer's other models and yolonas
         f.write('name: "%s"\nplatform: "tensorrt_plan"\nmax_batch_size: %d\n\n' % (MODEL_NAME, bmax))
@@ -164,7 +177,11 @@ def main():
     print("  MAX_BATCH = %d" % bmax)
     print("  HEATMAP_SCALING_FACTOR = %s" % (cfg["model"].get("heatmap_scaling_factor") or "<a number: the client needs one; --infer prints the dark-red value it used>"))
     print("  PIXELWISE_THRESHOLD = %s" % cfg["model"].get("pixelwise_threshold"))
-    print("[Export] The model folder is ready (largest batch %d). Build the TensorRT engine with your trtexec command: Serving_model/1/ then holds model.plan." % bmax)
+    print("[Export] The model folder is ready (largest batch %d). Build the TRT engine with your trtexec command: Serving_model/1/ then holds model.plan." % bmax)
+    if fp16_onnx:
+        print("[Export]   TRT 11 or newer (RTX 50-series): build from %s and pass NO precision flag (trtexec has no --fp16 there)." % os.path.basename(fp16_onnx))
+    else:
+        print("[Export]   For TRT 11 / RTX 50-series set export.fp16: true (or --fp16): that build needs an FP16 ONNX. See convert.md.")
     print("[Export] The .dvc file of the model folder is not touched: run dvc add yourself.")
 
 

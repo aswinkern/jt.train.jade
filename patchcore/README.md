@@ -68,3 +68,7 @@ enlarging and the blur are inside, the colour settings (`heatmap_scaling_factor`
 top of `triton/patchcore_client.py` (the export prints them). The export checks the ONNX against `--infer` on OK and NG pictures. `render.py` (colours, pictures, boxes) is
 the code both `--infer` and the client use. TensorRT and Triton: `convert.md`.
 
+`export.fp16: true` (or `--fp16`) also writes `1/model_fp16.onnx`. That is needed to build a TensorRT 11 engine
+(RTX 50-series), where `trtexec` has no `--fp16` and the FP32 ONNX of PatchCore does not fit in a 12 GB card.
+See the last section of `convert.md` and `tools/onnx_fp16.py`.
+
