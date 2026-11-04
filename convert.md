@@ -1,6 +1,83 @@
 # Convert the ONNX to a TensorRT engine (trtexec)
 
 The engine must be built with the **same Triton image that will serve it**, on the **same kind of GPU**.
+
+## Quick reference: which command for which GPU
+
+**The export is the same for both. The trtexec command is not.**
+
+One export writes both ONNX files. In `config.yaml`:
+
+```yaml
+export:
+    models_dir: "/jidoka/simulations/jdisk3/<customer>/models"
+    model_name: "PatchCore_v1.1.0"      # a new fit is a new name
+    experiment: "latest"
+    fp16: true                          # also write 1/model_fp16.onnx (for the 50-series)
+    query_tile: 512                     # PatchCore only: bounds the distance table
+```
+
+then, in the sim folder:
+
+```bash
+./run.sh --export
+```
+
+That writes `<models_dir>/<model_name>/Serving_model/`:
+
+```
+config.pbtxt
+1/model.onnx          + .data     FP32   -> build the engine for a 30-series from this
+1/model_fp16.onnx     + .data     FP16   -> build the engine for a 50-series from this
+```
+
+Now the engine, and here the two differ:
+
+| | RTX 30-series (Ampere) | RTX 50-series (Blackwell) |
+|---|---|---|
+| Triton image | `24.08-py3` | `26.09-py3` (25.01 or newer) |
+| TensorRT | 10.3 | 11.3 |
+| ONNX to build from | `model.onnx` | **`model_fp16.onnx`** |
+| precision flag | **`--fp16`** | **none** - `trtexec` has no `--fp16` |
+| why | weakly typed: the flag tells the builder it may use FP16 | strongly typed: the precision comes from the ONNX |
+| measured, PatchCore_v1.0.0 | 26.5 ms, 3080 Ti | 29.8 ms, 5070 |
+
+**RTX 30-series** - FP16 from the FP32 ONNX, with the flag:
+
+```bash
+docker run --rm --gpus '"device=0"' --user $(id -u):$(id -g) -e HOME=/tmp \
+  -v /mnt/jdisk3/jidoka_training_jdisk3/simulations/:/jidoka/simulations/jdisk3 \
+  nvcr.io/nvidia/tritonserver:24.08-py3 bash -lc \
+  'cd /jidoka/simulations/jdisk3/<customer>/models/<model_name>/Serving_model/1 && \
+   /usr/src/tensorrt/bin/trtexec --onnx=model.onnx --saveEngine=model.plan --fp16 \
+     --minShapes=image:1x3x518x518 --optShapes=image:1x3x518x518 \
+     --maxShapes=image:1x3x518x518 --memPoolSize=workspace:6000'
+```
+
+**RTX 50-series** - FP16 from the FP16 ONNX, no flag:
+
+```bash
+docker run --rm --gpus 'device=0' --user $(id -u):$(id -g) -e HOME=/tmp \
+  -v /mnt/hdd/jidoka/<wherever the model is>:/work \
+  nvcr.io/nvidia/tritonserver:26.09-py3 bash -lc \
+  'cd /work/<model_name>/Serving_model/1 && \
+   /usr/src/tensorrt/bin/trtexec --onnx=model_fp16.onnx --saveEngine=model.plan \
+     --minShapes=image:1x3x518x518 --optShapes=image:1x3x518x518 \
+     --maxShapes=image:1x3x518x518 --memPoolSize=workspace:6000'
+```
+
+Both write `model.plan` next to the ONNX, which is where Triton wants it, and both need
+`max_batch_size: 1` in `config.pbtxt` because the shapes above are min = opt = max = 1.
+`--user` keeps the engine owned by you instead of root.
+
+For **FP32** instead of FP16 on a 30-series, build from `model.onnx` with `--noTF32` and no
+`--fp16` (PatchCore needs `--noTF32`: see the PatchCore section). There is no tested FP32 path
+on a 50-series - the FP32 ONNX does not build there at all, see the last section.
+
+Do not reuse an engine across machines, and re-check every engine you build: a `&&&& PASSED`
+says nothing about the numbers. Both points are explained below.
+
+---
 The commands below use `nvcr.io/nvidia/tritonserver:24.08-py3` (TensorRT 10.3). On a 50-series GPU (RTX 5080) use a newer image
 (Triton 25.01 or newer) and a recent driver, and build the engine on that machine.
 
